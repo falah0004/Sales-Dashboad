@@ -3,131 +3,129 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Item Forecast vs Sales — Ledger</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<title>Item Forecast vs Sales — Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root{
-    --paper:#F6F4EE;
-    --paper-raised:#FBFAF6;
-    --ink:#1F2A24;
-    --ink-soft:#5B655D;
-    --teal:#0E6B64;
-    --teal-soft:#DCEAE8;
-    --amber:#D98E2B;
-    --amber-soft:#F6E8D2;
-    --rose:#B5533C;
-    --hairline:#DCD6C4;
-    --hairline-strong:#C7BFAA;
+    --paper:#F7F9FC;
+    --paper-raised:#FFFFFF;
+    --ink:#201F1E;
+    --ink-soft:#605E5C;
+    --teal:#118DFF;
+    --teal-soft:#D7EBFF;
+    --amber:#0B3C6B;
+    --amber-soft:#CBDCEB;
+    --rose:#C4314B;
+    --hairline:#E7E9ED;
+    --hairline-strong:#D2D6DC;
+    --shadow: 0 1px 2px rgba(16,30,54,.06), 0 4px 14px rgba(16,30,54,.05);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
     background:var(--paper);
     color:var(--ink);
-    font-family:'IBM Plex Sans',sans-serif;
+    font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
-  .num{font-family:'IBM Plex Mono',monospace;}
-  .serif{font-family:'Source Serif 4',serif;}
+  .num{font-variant-numeric:tabular-nums;}
+  .serif{ font-weight:700; }
 
   /* Masthead */
   .masthead{
-    border-bottom:1px solid var(--hairline-strong);
-    padding:28px clamp(16px,4vw,48px) 18px;
+    border-bottom:1px solid var(--hairline);
+    padding:22px clamp(16px,4vw,48px) 16px;
     display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap;
+    background:var(--paper-raised);
   }
   .masthead .kicker{
-    font-size:11px; letter-spacing:.04em; color:var(--ink-soft); margin:0 0 6px;
-    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px; letter-spacing:.06em; color:var(--teal); margin:0 0 4px; font-weight:600;
   }
   .masthead h1{
-    font-family:'Source Serif 4',serif; font-weight:600; font-size:clamp(24px,3vw,34px);
-    margin:0; line-height:1.05; letter-spacing:-0.01em;
+    font-weight:600; font-size:clamp(20px,2.6vw,26px);
+    margin:0; line-height:1.15; letter-spacing:-0.01em; color:var(--ink);
   }
   .masthead .meta{
     font-size:12.5px; color:var(--ink-soft); text-align:right; line-height:1.6;
   }
   .masthead .meta button{
-    background:none; border:1px solid var(--hairline-strong); color:var(--ink);
-    font-family:'IBM Plex Sans',sans-serif; font-size:12px; padding:5px 12px; cursor:pointer;
-    border-radius:2px; margin-left:8px;
+    background:var(--teal); border:1px solid var(--teal); color:#fff;
+    font-family:inherit; font-size:12.5px; font-weight:600; padding:7px 14px; cursor:pointer;
+    border-radius:6px; margin-left:8px;
   }
-  .masthead .meta button:hover{ background:var(--teal-soft); border-color:var(--teal); }
+  .masthead .meta button:hover{ background:#0d78dc; }
 
   /* Filter bar */
   .filterbar{
-    display:flex; gap:22px; flex-wrap:wrap; align-items:flex-end;
-    padding:16px clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline);
+    display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end;
+    padding:14px clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline);
     background:var(--paper-raised);
   }
   .field{ display:flex; flex-direction:column; gap:5px; min-width:150px; }
   .field label{
-    font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-soft);
-    font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.03em; text-transform:uppercase; color:var(--ink-soft); font-weight:600;
   }
   .field select, .field input[type="text"]{
-    font-family:'IBM Plex Sans',sans-serif; font-size:13.5px; padding:7px 9px;
-    border:1px solid var(--hairline-strong); background:#fff; color:var(--ink); border-radius:2px;
+    font-family:inherit; font-size:13.5px; padding:7px 10px;
+    border:1px solid var(--hairline-strong); background:#fff; color:var(--ink); border-radius:6px;
     min-width:150px;
   }
-  .field select:focus, .field input:focus{ outline:2px solid var(--teal); outline-offset:-1px; }
+  .field select:focus, .field input:focus{ outline:2px solid var(--teal); outline-offset:0; border-color:var(--teal); }
   .filter-reset{
-    align-self:flex-end; background:none; border:none; color:var(--teal); font-size:12.5px;
-    text-decoration:underline; cursor:pointer; padding:8px 0; font-family:'IBM Plex Sans',sans-serif;
+    align-self:flex-end; background:none; border:none; color:var(--teal); font-size:12.5px; font-weight:600;
+    cursor:pointer; padding:8px 0; font-family:inherit;
   }
+  .filter-reset:hover{ text-decoration:underline; }
 
   /* Tabs */
   .tabs{
-    display:flex; gap:2px; padding:0 clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline-strong);
-    background:var(--paper); overflow-x:auto;
+    display:flex; gap:4px; padding:0 clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline-strong);
+    background:var(--paper-raised); overflow-x:auto;
   }
   .tab{
-    font-family:'IBM Plex Mono',monospace; font-size:12.5px; letter-spacing:.03em;
-    padding:13px 18px; cursor:pointer; color:var(--ink-soft); border-bottom:2px solid transparent;
+    font-size:13.5px; font-weight:600; letter-spacing:0;
+    padding:13px 16px; cursor:pointer; color:var(--ink-soft); border-bottom:3px solid transparent;
     white-space:nowrap; user-select:none;
   }
-  .tab.active{ color:var(--ink); border-bottom-color:var(--teal); }
+  .tab.active{ color:var(--teal); border-bottom-color:var(--teal); }
   .tab:hover:not(.active){ color:var(--ink); }
 
-  main{ padding:26px clamp(16px,4vw,48px) 60px; max-width:1400px; margin:0 auto; }
+  main{ padding:22px clamp(16px,4vw,48px) 60px; max-width:1400px; margin:0 auto; }
   .canvas-page{ display:none; }
   .canvas-page.active{ display:block; animation:fadein .25s ease; }
   @keyframes fadein{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
 
-  .grid{ display:grid; gap:18px; }
+  .grid{ display:grid; gap:16px; }
   .grid.cols-3{ grid-template-columns:repeat(3,1fr); }
   .grid.cols-2{ grid-template-columns:repeat(2,1fr); }
   @media(max-width:900px){ .grid.cols-3,.grid.cols-2{ grid-template-columns:1fr; } }
 
   .card{
-    background:var(--paper-raised); border:1px solid var(--hairline); border-radius:2px;
-    padding:20px 22px;
+    background:var(--paper-raised); border:1px solid var(--hairline); border-radius:10px;
+    padding:20px 22px; box-shadow:var(--shadow);
   }
   .card h3{
-    font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:.04em;
-    text-transform:uppercase; color:var(--ink-soft); margin:0 0 16px; font-weight:500;
+    font-size:13px; letter-spacing:0; text-transform:none; color:var(--ink); margin:0 0 16px; font-weight:600;
   }
-  .card h3 span.sub{ text-transform:none; letter-spacing:0; color:var(--ink-soft); }
+  .card h3 span.sub{ text-transform:none; letter-spacing:0; color:var(--ink-soft); font-weight:400; }
 
-  .kpi-value{ font-family:'Source Serif 4',serif; font-size:40px; font-weight:600; line-height:1; margin:0 0 6px; }
+  .kpi-value{ font-weight:700; font-size:38px; line-height:1; margin:0 0 6px; color:var(--ink); }
   .kpi-label{ font-size:12.5px; color:var(--ink-soft); }
-  .kpi-sub{ font-family:'IBM Plex Mono',monospace; font-size:12px; margin-top:10px; color:var(--ink-soft); }
-  .kpi-sub b{ color:var(--ink); font-weight:600; }
+  .kpi-sub{ font-size:12.5px; margin-top:10px; color:var(--ink-soft); }
+  .kpi-sub b{ color:var(--ink); font-weight:700; }
 
   .achieve-up{ color:var(--teal); }
   .achieve-down{ color:var(--rose); }
 
   table.led{ width:100%; border-collapse:collapse; font-size:13px; }
   table.led th{
-    text-align:left; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.04em;
-    text-transform:uppercase; color:var(--ink-soft); font-weight:500; padding:8px 10px;
-    border-bottom:1px solid var(--hairline-strong);
+    text-align:left; font-size:11px; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--ink-soft); font-weight:600; padding:9px 10px;
+    border-bottom:2px solid var(--hairline-strong);
   }
-  table.led td{ padding:8px 10px; border-bottom:1px solid var(--hairline); font-family:'IBM Plex Mono',monospace; }
-  table.led td.name{ font-family:'IBM Plex Sans',sans-serif; }
+  table.led td{ padding:9px 10px; border-bottom:1px solid var(--hairline); }
+  table.led td.name{ font-weight:500; }
   table.led tr:hover td{ background:var(--teal-soft); }
   table.led td.num, table.led th.num{ text-align:right; }
   .bar-cell{ display:flex; align-items:center; gap:8px; }
@@ -136,16 +134,16 @@
   .bar-fill.over{ background:var(--rose); }
 
   .legend-row{ display:flex; gap:18px; margin-bottom:14px; flex-wrap:wrap; }
-  .legend-item{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); }
-  .legend-dot{ width:9px; height:9px; border-radius:2px; display:inline-block; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); font-weight:500; }
+  .legend-dot{ width:10px; height:10px; border-radius:3px; display:inline-block; }
 
   .empty-note{ font-size:13px; color:var(--ink-soft); padding:30px 0; text-align:center; }
-  .loading{ padding:80px 20px; text-align:center; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; }
+  .loading{ padding:80px 20px; text-align:center; color:var(--ink-soft); font-weight:500; }
   .error-box{
     margin:26px clamp(16px,4vw,48px); padding:18px 20px; border:1px solid var(--rose);
-    background:#FBEDE8; color:var(--rose); font-size:13.5px; border-radius:2px; line-height:1.6;
+    background:#FCEBEE; color:var(--rose); font-size:13.5px; border-radius:8px; line-height:1.6;
   }
-  .error-box code{ font-family:'IBM Plex Mono',monospace; background:#fff; padding:1px 5px; border-radius:2px; }
+  .error-box code{ font-family:'Consolas','Courier New',monospace; background:#fff; padding:1px 5px; border-radius:4px; }
 
   .search-wrap{ margin-bottom:14px; }
   .foot-note{ font-size:11.5px; color:var(--ink-soft); margin-top:8px; }
@@ -158,8 +156,8 @@
 
 <div class="masthead">
   <div>
-    <p class="kicker">DERMA HEALTH · SALES LEDGER · UAE</p>
-    <h1>Item Forecast vs Sales</h1>
+    <p class="kicker">DERMA HEALTH COSMETICS · UAE</p>
+    <h1>Item Forecast vs Sales Dashboard</h1>
   </div>
   <div class="meta">
     <div id="lastUpdated">Not loaded yet</div>
@@ -205,9 +203,10 @@ const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV
 const MONTH_LABEL = {JAN:'Jan',FEB:'Feb',MAR:'Mar',APR:'Apr',MAY:'May',JUN:'Jun',JUL:'Jul',AUG:'Aug',SEP:'Sep',OCT:'Oct',NOV:'Nov',DEC:'Dec'};
 
 const COLORS = {
-  teal:'#0E6B64', tealSoft:'#7fb8b3', amber:'#D98E2B', amberSoft:'#e8bd7f',
-  rose:'#B5533C', ink:'#1F2A24', inkSoft:'#5B655D', hairline:'#DCD6C4'
+  teal:'#118DFF', tealSoft:'#8FC7FF', amber:'#0B3C6B', amberSoft:'#6E93B6',
+  rose:'#C4314B', ink:'#201F1E', inkSoft:'#605E5C', hairline:'#E7E9ED'
 };
+const FONT_FAMILY = "'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif";
 
 let RAW = [];          // parsed rows
 let ELAPSED_MONTHS = []; // months with actual data present
@@ -469,10 +468,10 @@ function renderOverview(rows, f){
     },
     options:{
       responsive:true,
-      plugins:{ legend:{ position:'top', align:'end', labels:{ boxWidth:10, font:{family:"'IBM Plex Sans'", size:12} } } },
+      plugins:{ legend:{ position:'top', align:'end', labels:{ boxWidth:10, font:{family:FONT_FAMILY, size:12} } } },
       scales:{
-        x:{ grid:{display:false}, ticks:{ font:{family:"'IBM Plex Mono'", size:11} } },
-        y:{ grid:{color:COLORS.hairline}, ticks:{ callback:(v)=>fmtCompact(v), font:{family:"'IBM Plex Mono'", size:11} } }
+        x:{ grid:{display:false}, ticks:{ font:{family:FONT_FAMILY, size:11} } },
+        y:{ grid:{color:COLORS.hairline}, ticks:{ callback:(v)=>fmtCompact(v), font:{family:FONT_FAMILY, size:11} } }
       }
     }
   });
@@ -554,8 +553,8 @@ function renderTeam(rows, f){
       ]
     },
     options:{ plugins:{legend:{display:false}}, scales:{
-      x:{grid:{display:false}, ticks:{font:{family:"'IBM Plex Sans'",size:12}}},
-      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:"'IBM Plex Mono'",size:11}}}
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
+      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
   });
 
@@ -569,8 +568,8 @@ function renderTeam(rows, f){
       ]
     },
     options:{ plugins:{legend:{display:false}}, scales:{
-      x:{grid:{display:false}, ticks:{font:{family:"'IBM Plex Sans'",size:11}, maxRotation:40, minRotation:40}},
-      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:"'IBM Plex Mono'",size:11}}}
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11}, maxRotation:40, minRotation:40}},
+      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
   });
 }
@@ -618,7 +617,7 @@ function renderProducts(rows, f){
     <div class="card">
       <h3>All Products</h3>
       <div class="search-wrap">
-        <input type="text" id="productSearch" placeholder="Search product name…" style="width:100%; max-width:340px; padding:8px 10px; border:1px solid var(--hairline-strong); border-radius:2px; font-family:'IBM Plex Sans',sans-serif; font-size:13px;">
+        <input type="text" id="productSearch" placeholder="Search product name…" style="width:100%; max-width:340px; padding:8px 10px; border:1px solid var(--hairline-strong); border-radius:6px; font-family:inherit; font-size:13px;">
       </div>
       <table class="led">
         <thead><tr><th>Product</th><th>Brand</th><th class="num">Target</th><th class="num">Actual</th></tr></thead>
@@ -637,8 +636,8 @@ function renderProducts(rows, f){
       indexAxis:'y',
       plugins:{legend:{display:false}, tooltip:{callbacks:{title:(items)=>topProducts[items[0].dataIndex][0]}}},
       scales:{
-        x:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:"'IBM Plex Mono'",size:11}}},
-        y:{grid:{display:false}, ticks:{font:{family:"'IBM Plex Sans'",size:11.5}}}
+        x:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5}}}
       }
     }
   });
@@ -653,8 +652,8 @@ function renderProducts(rows, f){
       ]
     },
     options:{ plugins:{legend:{display:false}}, scales:{
-      x:{grid:{display:false}, ticks:{font:{family:"'IBM Plex Sans'",size:12}}},
-      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:"'IBM Plex Mono'",size:11}}}
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
+      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
   });
 
@@ -706,7 +705,7 @@ function renderCustomers(rows, f){
     <div class="card">
       <h3>All Customers</h3>
       <div class="search-wrap">
-        <input type="text" id="custSearch" placeholder="Search customer name…" style="width:100%; max-width:340px; padding:8px 10px; border:1px solid var(--hairline-strong); border-radius:2px; font-family:'IBM Plex Sans',sans-serif; font-size:13px;">
+        <input type="text" id="custSearch" placeholder="Search customer name…" style="width:100%; max-width:340px; padding:8px 10px; border:1px solid var(--hairline-strong); border-radius:6px; font-family:inherit; font-size:13px;">
       </div>
       <table class="led">
         <thead><tr><th>Customer</th><th>Class</th><th class="num">Target</th><th class="num">Actual</th></tr></thead>
@@ -725,8 +724,8 @@ function renderCustomers(rows, f){
       indexAxis:'y',
       plugins:{legend:{display:false}, tooltip:{callbacks:{title:(items)=>topCustomers[items[0].dataIndex][0]}}},
       scales:{
-        x:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:"'IBM Plex Mono'",size:11}}},
-        y:{grid:{display:false}, ticks:{font:{family:"'IBM Plex Sans'",size:11.5}}}
+        x:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5}}}
       }
     }
   });
@@ -738,7 +737,7 @@ function renderCustomers(rows, f){
       labels:['Top 15 customers','All other customers'],
       datasets:[{ data:[topCustomers.reduce((s,[,g])=>s+g.sale,0), remainder], backgroundColor:[COLORS.teal, '#E7E2D3'], borderWidth:0 }]
     },
-    options:{ plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{family:"'IBM Plex Sans'",size:12}} } } }
+    options:{ plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } } }
   });
 
   const allCustomers = [...byCustomer.entries()].sort((a,b)=>b[1].sale-a[1].sale);
