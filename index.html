@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Item Forecast vs Sales — Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root{
@@ -207,6 +208,11 @@ const COLORS = {
   rose:'#C4314B', ink:'#201F1E', inkSoft:'#605E5C', hairline:'#E7E9ED'
 };
 const FONT_FAMILY = "'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif";
+function fmtMillions(n){ return (Number(n)/1e6).toFixed(2)+'M'; }
+if(typeof ChartDataLabels !== 'undefined'){
+  Chart.register(ChartDataLabels);
+  Chart.defaults.set('plugins.datalabels', { display:false });
+}
 
 let RAW = [];          // parsed rows
 let ELAPSED_MONTHS = []; // months with actual data present
@@ -455,23 +461,46 @@ function renderOverview(rows, f){
     }
   });
 
-  // Monthly trend (horizontal bar, target vs actual)
+  // Monthly trend (horizontal bar, target vs actual) + achievement % line
   const trendCtx = document.getElementById('trendChart');
+  const monthlyPct = agg.monthly.map(m => m.target>0 ? (m.actual/m.target*100) : 0);
+  const pctMax = Math.max(...monthlyPct, 100) * 1.35;
   CHARTS.trend = new Chart(trendCtx, {
     type:'bar',
     data:{
       labels: agg.monthly.map(m=>MONTH_LABEL[m.m]),
       datasets:[
-        {label:'Target', data: agg.monthly.map(m=>m.target), backgroundColor:COLORS.tealSoft, borderRadius:2, barPercentage:0.7},
-        {label:'Actual', data: agg.monthly.map(m=>m.actual), backgroundColor:COLORS.amber, borderRadius:2, barPercentage:0.7}
+        {label:'Target', data: agg.monthly.map(m=>m.target), backgroundColor:COLORS.tealSoft, borderRadius:2, barPercentage:0.7, yAxisID:'y', order:2},
+        {label:'Actual', data: agg.monthly.map(m=>m.actual), backgroundColor:COLORS.amber, borderRadius:2, barPercentage:0.7, yAxisID:'y', order:2},
+        {
+          label:'Achievement %', type:'line', data: monthlyPct, yAxisID:'yPct', order:1,
+          borderColor:COLORS.rose, backgroundColor:COLORS.rose, borderWidth:2,
+          pointRadius:4, pointBackgroundColor:COLORS.rose, pointBorderColor:'#fff', pointBorderWidth:1.5,
+          tension:0.3,
+          datalabels:{
+            display:true, anchor:'end', align:'top', offset:6,
+            color:COLORS.rose, font:{family:FONT_FAMILY, size:10.5, weight:'700'},
+            formatter:(value)=> fmtNum(value,0)+'%'
+          }
+        }
       ]
     },
     options:{
       responsive:true,
-      plugins:{ legend:{ position:'top', align:'end', labels:{ boxWidth:10, font:{family:FONT_FAMILY, size:12} } } },
+      layout:{ padding:{ top:30 } },
+      plugins:{
+        legend:{ position:'top', align:'end', labels:{ boxWidth:10, font:{family:FONT_FAMILY, size:12} } },
+        datalabels:{
+          display:(ctx)=> ctx.dataset.type !== 'line', anchor:'end', align:'top', offset:2,
+          color: COLORS.ink,
+          font:{ family:FONT_FAMILY, size:10.5, weight:'600' },
+          formatter:(value)=> fmtMillions(value)
+        }
+      },
       scales:{
         x:{ grid:{display:false}, ticks:{ font:{family:FONT_FAMILY, size:11} } },
-        y:{ grid:{color:COLORS.hairline}, ticks:{ callback:(v)=>fmtCompact(v), font:{family:FONT_FAMILY, size:11} } }
+        y:{ position:'left', grid:{color:COLORS.hairline}, suggestedMax: Math.max(...agg.monthly.map(m=>Math.max(m.target,m.actual)))*1.22, ticks:{ callback:(v)=>fmtCompact(v), font:{family:FONT_FAMILY, size:11} } },
+        yPct:{ position:'right', min:0, max:pctMax, grid:{display:false}, ticks:{ callback:(v)=>v+'%', font:{family:FONT_FAMILY, size:11} } }
       }
     }
   });
