@@ -100,6 +100,11 @@
     background:none; border:none; color:var(--teal); font-size:12px; font-weight:600; cursor:pointer; padding:0; font-family:inherit;
   }
   .ms-panel-actions button:hover{ text-decoration:underline; }
+  .ms-search{
+    display:block; width:calc(100% - 24px); margin:0 12px 8px; padding:6px 8px;
+    border:1px solid var(--hairline-strong); border-radius:6px; font-family:inherit; font-size:12.5px;
+  }
+  .ms-search:focus{ outline:2px solid var(--teal); outline-offset:0; border-color:var(--teal); }
   .ms-options{ max-height:240px; overflow-y:auto; padding:0 4px; }
   .ms-option{
     display:flex; align-items:center; gap:8px; padding:6px 8px; font-size:13.5px; cursor:pointer; border-radius:6px;
@@ -238,6 +243,18 @@
         <button type="button" data-action="none">Clear</button>
       </div>
       <div class="ms-options" id="brand-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="product">
+    <label>Product</label>
+    <button type="button" class="ms-trigger" id="product-trigger">All products</button>
+    <div class="ms-panel" id="product-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <input type="text" class="ms-search" id="product-search" placeholder="Search products…">
+      <div class="ms-options" id="product-options"></div>
     </div>
   </div>
   <button class="filter-reset" id="resetBtn">Reset filters</button>
@@ -387,9 +404,10 @@ function processRows(rows){
 function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean))].sort(); }
 
 // selection state: empty Set = "All" (no restriction)
-const MS_SELECTED = { period: new Set(), senior: new Set(), sp: new Set(), brand: new Set() };
-const MS_LABELS = { period: 'months', senior: 'seniors', sp: 'sales people', brand: 'brands' };
-let MS_VALUES = { period: [], senior: [], sp: [], brand: [] };
+const MS_SELECTED = { period: new Set(), senior: new Set(), sp: new Set(), brand: new Set(), product: new Set() };
+const MS_LABELS = { period: 'months', senior: 'seniors', sp: 'sales people', brand: 'brands', product: 'products' };
+let MS_VALUES = { period: [], senior: [], sp: [], brand: [], product: [] };
+const MS_SEARCH = { product: '' };
 
 function msDisplay(key, val){
   return key==='period' ? (MONTH_LABEL[val]||val) : val;
@@ -400,13 +418,20 @@ function resolvedPeriods(){
   return sel.size===0 ? ELAPSED_MONTHS.slice() : ELAPSED_MONTHS.filter(m=>sel.has(m));
 }
 
+function visibleMsValues(key){
+  const q = (MS_SEARCH[key]||'').trim().toLowerCase();
+  if(!q) return MS_VALUES[key];
+  return MS_VALUES[key].filter(v=>v.toLowerCase().includes(q));
+}
+
 function buildFilterOptions(){
   MS_VALUES.period = ELAPSED_MONTHS.slice();
   MS_VALUES.senior = uniqueSorted(RAW.map(r=>r.senior));
   MS_VALUES.sp = uniqueSorted(RAW.map(r=>r.sp));
   MS_VALUES.brand = uniqueSorted(RAW.map(r=>r.brand));
+  MS_VALUES.product = uniqueSorted(RAW.map(r=>r.product));
 
-  ['period','senior','sp','brand'].forEach(key=>{
+  ['period','senior','sp','brand','product'].forEach(key=>{
     MS_SELECTED[key] = new Set(); // reset to "All" on fresh data load
     renderMsOptions(key);
     updateMsTrigger(key);
@@ -415,11 +440,12 @@ function buildFilterOptions(){
 
 function renderMsOptions(key){
   const container = document.getElementById(key+'-options');
-  container.innerHTML = MS_VALUES[key].map((val,i)=>{
+  const values = visibleMsValues(key);
+  container.innerHTML = values.map((val,i)=>{
     const id = 'ms-'+key+'-'+i;
     const checked = MS_SELECTED[key].has(val) ? 'checked' : '';
     return `<div class="ms-option"><input type="checkbox" id="${id}" data-key="${key}" data-value="${val.replace(/"/g,'&quot;')}" ${checked}><label for="${id}">${msDisplay(key,val)}</label></div>`;
-  }).join('') || '<div class="ms-option" style="color:var(--ink-soft);">No values found</div>';
+  }).join('') || '<div class="ms-option" style="color:var(--ink-soft);">No matches</div>';
 }
 
 function updateMsTrigger(key){
@@ -441,7 +467,7 @@ function closeAllMsPanels(){
   document.querySelectorAll('.ms-trigger.open').forEach(t=>t.classList.remove('open'));
 }
 
-['period','senior','sp','brand'].forEach(key=>{
+['period','senior','sp','brand','product'].forEach(key=>{
   document.getElementById(key+'-trigger').addEventListener('click', (e)=>{
     e.stopPropagation();
     const panel = document.getElementById(key+'-panel');
@@ -454,7 +480,10 @@ function closeAllMsPanels(){
     e.stopPropagation();
     const actionBtn = e.target.closest('button[data-action]');
     if(actionBtn){
-      if(actionBtn.dataset.action==='all'){ MS_SELECTED[key] = new Set(MS_VALUES[key]); }
+      if(actionBtn.dataset.action==='all'){
+        const visible = visibleMsValues(key);
+        MS_SELECTED[key] = new Set([...MS_SELECTED[key], ...visible]);
+      }
       if(actionBtn.dataset.action==='none'){ MS_SELECTED[key] = new Set(); }
       renderMsOptions(key);
       updateMsTrigger(key);
@@ -471,6 +500,15 @@ function closeAllMsPanels(){
   });
 });
 
+const productSearchEl = document.getElementById('product-search');
+if(productSearchEl){
+  productSearchEl.addEventListener('click', e=>e.stopPropagation());
+  productSearchEl.addEventListener('input', (e)=>{
+    MS_SEARCH.product = e.target.value;
+    renderMsOptions('product');
+  });
+}
+
 document.addEventListener('click', closeAllMsPanels);
 
 function getFilters(){
@@ -478,7 +516,8 @@ function getFilters(){
     periods: resolvedPeriods(),
     senior: MS_SELECTED.senior,
     sp: MS_SELECTED.sp,
-    brand: MS_SELECTED.brand
+    brand: MS_SELECTED.brand,
+    product: MS_SELECTED.product
   };
 }
 
@@ -486,7 +525,8 @@ function filteredRows(f){
   return RAW.filter(r =>
     (f.senior.size===0 || f.senior.has(r.senior)) &&
     (f.sp.size===0 || f.sp.has(r.sp)) &&
-    (f.brand.size===0 || f.brand.has(r.brand))
+    (f.brand.size===0 || f.brand.has(r.brand)) &&
+    (f.product.size===0 || f.product.has(r.product))
   );
 }
 
@@ -963,11 +1003,13 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
 });
 
 document.getElementById('resetBtn').addEventListener('click', ()=>{
-  ['period','senior','sp','brand'].forEach(key=>{
+  ['period','senior','sp','brand','product'].forEach(key=>{
     MS_SELECTED[key] = new Set();
     renderMsOptions(key);
     updateMsTrigger(key);
   });
+  MS_SEARCH.product = '';
+  if(productSearchEl) productSearchEl.value = '';
   renderAll();
 });
 
