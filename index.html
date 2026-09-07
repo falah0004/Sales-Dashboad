@@ -196,9 +196,16 @@
 </div>
 
 <div class="filterbar">
-  <div class="field">
-    <label for="periodSelect">Period</label>
-    <select id="periodSelect"></select>
+  <div class="field ms-field" data-key="period">
+    <label>Period</label>
+    <button type="button" class="ms-trigger" id="period-trigger">Year to date</button>
+    <div class="ms-panel" id="period-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear (YTD)</button>
+      </div>
+      <div class="ms-options" id="period-options"></div>
+    </div>
   </div>
   <div class="field ms-field" data-key="senior">
     <label>Senior</label>
@@ -259,6 +266,36 @@ const COLORS = {
 };
 const FONT_FAMILY = "'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif";
 function fmtMillions(n){ return (Number(n)/1e6).toFixed(2)+'M'; }
+
+// Datalabel configs for paired Target/Actual grouped bar charts.
+// Target bars show just their value; Actual bars show value + achievement % below it.
+function targetLabelCfg(){
+  return {
+    display:true, anchor:'end', align:'top', offset:2,
+    color:COLORS.ink, font:{family:FONT_FAMILY, size:10, weight:'600'},
+    formatter:(value)=> fmtCompact(value)
+  };
+}
+function actualLabelCfg(){
+  return {
+    display:true, anchor:'end', align:'top', offset:2,
+    color:COLORS.ink, font:{family:FONT_FAMILY, size:10, weight:'600'},
+    formatter:(value, ctx)=>{
+      const targetArr = ctx.chart.data.datasets[0].data;
+      const t = targetArr[ctx.dataIndex] || 0;
+      const pct = t>0 ? (value/t*100) : 0;
+      return [fmtCompact(value), '('+fmtNum(pct,0)+'%)'];
+    }
+  };
+}
+// Datalabel config for single-series horizontal bars (product/customer lists).
+function endValueLabelCfg(){
+  return {
+    display:true, anchor:'end', align:'end', offset:4,
+    color:COLORS.ink, font:{family:FONT_FAMILY, size:10.5, weight:'600'},
+    formatter:(value)=> fmtCompact(value)
+  };
+}
 if(typeof ChartDataLabels !== 'undefined'){
   Chart.register(ChartDataLabels);
   Chart.defaults.set('plugins.datalabels', { display:false });
@@ -297,7 +334,6 @@ function loadData(){
         processRows(results.data);
         document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});
         buildFilterOptions();
-        buildPeriodOptions();
         renderAll();
       }catch(e){
         showError('The sheet loaded but could not be read. Details: ' + e.message);
@@ -351,16 +387,26 @@ function processRows(rows){
 function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean))].sort(); }
 
 // selection state: empty Set = "All" (no restriction)
-const MS_SELECTED = { senior: new Set(), sp: new Set(), brand: new Set() };
-const MS_LABELS = { senior: 'seniors', sp: 'sales people', brand: 'brands' };
-let MS_VALUES = { senior: [], sp: [], brand: [] };
+const MS_SELECTED = { period: new Set(), senior: new Set(), sp: new Set(), brand: new Set() };
+const MS_LABELS = { period: 'months', senior: 'seniors', sp: 'sales people', brand: 'brands' };
+let MS_VALUES = { period: [], senior: [], sp: [], brand: [] };
+
+function msDisplay(key, val){
+  return key==='period' ? (MONTH_LABEL[val]||val) : val;
+}
+
+function resolvedPeriods(){
+  const sel = MS_SELECTED.period;
+  return sel.size===0 ? ELAPSED_MONTHS.slice() : ELAPSED_MONTHS.filter(m=>sel.has(m));
+}
 
 function buildFilterOptions(){
+  MS_VALUES.period = ELAPSED_MONTHS.slice();
   MS_VALUES.senior = uniqueSorted(RAW.map(r=>r.senior));
   MS_VALUES.sp = uniqueSorted(RAW.map(r=>r.sp));
   MS_VALUES.brand = uniqueSorted(RAW.map(r=>r.brand));
 
-  ['senior','sp','brand'].forEach(key=>{
+  ['period','senior','sp','brand'].forEach(key=>{
     MS_SELECTED[key] = new Set(); // reset to "All" on fresh data load
     renderMsOptions(key);
     updateMsTrigger(key);
@@ -372,7 +418,7 @@ function renderMsOptions(key){
   container.innerHTML = MS_VALUES[key].map((val,i)=>{
     const id = 'ms-'+key+'-'+i;
     const checked = MS_SELECTED[key].has(val) ? 'checked' : '';
-    return `<div class="ms-option"><input type="checkbox" id="${id}" data-key="${key}" data-value="${val.replace(/"/g,'&quot;')}" ${checked}><label for="${id}">${val}</label></div>`;
+    return `<div class="ms-option"><input type="checkbox" id="${id}" data-key="${key}" data-value="${val.replace(/"/g,'&quot;')}" ${checked}><label for="${id}">${msDisplay(key,val)}</label></div>`;
   }).join('') || '<div class="ms-option" style="color:var(--ink-soft);">No values found</div>';
 }
 
@@ -380,9 +426,11 @@ function updateMsTrigger(key){
   const sel = MS_SELECTED[key];
   const trigger = document.getElementById(key+'-trigger');
   if(sel.size===0){
-    trigger.textContent = 'All ' + MS_LABELS[key];
+    trigger.textContent = key==='period'
+      ? `Year to date (${MONTH_LABEL[ELAPSED_MONTHS[0]]}–${MONTH_LABEL[ELAPSED_MONTHS[ELAPSED_MONTHS.length-1]]})`
+      : 'All ' + MS_LABELS[key];
   } else if(sel.size===1){
-    trigger.textContent = [...sel][0];
+    trigger.textContent = msDisplay(key, [...sel][0]);
   } else {
     trigger.textContent = sel.size + ' selected';
   }
@@ -393,7 +441,7 @@ function closeAllMsPanels(){
   document.querySelectorAll('.ms-trigger.open').forEach(t=>t.classList.remove('open'));
 }
 
-['senior','sp','brand'].forEach(key=>{
+['period','senior','sp','brand'].forEach(key=>{
   document.getElementById(key+'-trigger').addEventListener('click', (e)=>{
     e.stopPropagation();
     const panel = document.getElementById(key+'-panel');
@@ -425,16 +473,9 @@ function closeAllMsPanels(){
 
 document.addEventListener('click', closeAllMsPanels);
 
-function buildPeriodOptions(){
-  const sel = document.getElementById('periodSelect');
-  const opts = [`<option value="YTD">Year to date (${MONTH_LABEL[ELAPSED_MONTHS[0]]}–${MONTH_LABEL[ELAPSED_MONTHS[ELAPSED_MONTHS.length-1]]})</option>`];
-  ELAPSED_MONTHS.forEach(m => opts.push(`<option value="${m}">${MONTH_LABEL[m]} only</option>`));
-  sel.innerHTML = opts.join('');
-}
-
 function getFilters(){
   return {
-    period: document.getElementById('periodSelect').value || 'YTD',
+    periods: resolvedPeriods(),
     senior: MS_SELECTED.senior,
     sp: MS_SELECTED.sp,
     brand: MS_SELECTED.brand
@@ -450,28 +491,18 @@ function filteredRows(f){
 }
 
 // returns {target, actual, visits, months:[{m,target,actual}]} for a row set given period filter
-function aggregate(rows, period){
+function aggregate(rows, periods){
   let target=0, actual=0, visits=0;
-  const monthly = ELAPSED_MONTHS.map(m => ({m, target:0, actual:0}));
-  if(period === 'YTD'){
-    rows.forEach(r=>{
-      ELAPSED_MONTHS.forEach((m,i)=>{
-        target += r.months[m].tarValue;
-        actual += r.months[m].sale;
-        visits += r.months[m].visits;
-        monthly[i].target += r.months[m].tarValue;
-        monthly[i].actual += r.months[m].sale;
-      });
+  const monthly = periods.map(m => ({m, target:0, actual:0}));
+  rows.forEach(r=>{
+    periods.forEach((m,i)=>{
+      target += r.months[m].tarValue;
+      actual += r.months[m].sale;
+      visits += r.months[m].visits;
+      monthly[i].target += r.months[m].tarValue;
+      monthly[i].actual += r.months[m].sale;
     });
-  } else {
-    rows.forEach(r=>{
-      target += r.months[period].tarValue;
-      actual += r.months[period].sale;
-      visits += r.months[period].visits;
-    });
-    const idx = ELAPSED_MONTHS.indexOf(period);
-    if(idx>-1){ monthly[idx].target = target; monthly[idx].actual = actual; }
-  }
+  });
   return {target, actual, visits, monthly};
 }
 
@@ -517,7 +548,7 @@ function showPage(name){
 /* ---------------- OVERVIEW ---------------- */
 function renderOverview(rows, f){
   const el = document.getElementById('page-overview');
-  const agg = aggregate(rows, f.period);
+  const agg = aggregate(rows, f.periods);
   const forecastFull = annualForecastTotal(rows);
   const ytdActual = ytdActualTotal(rows);
   const achievePct = forecastFull>0 ? (ytdActual/forecastFull*100) : 0;
@@ -546,7 +577,7 @@ function renderOverview(rows, f){
       </div>
     </div>
     <div class="card">
-      <h3>Monthly Sales Trend <span class="sub">— actual value by month, ${MONTH_LABEL[ELAPSED_MONTHS[0]]}–${MONTH_LABEL[ELAPSED_MONTHS[ELAPSED_MONTHS.length-1]]}</span></h3>
+      <h3>Monthly Sales Trend <span class="sub">— actual value by month, ${agg.monthly.map(m=>MONTH_LABEL[m.m]).join(', ')}</span></h3>
       <canvas id="trendChart" height="90"></canvas>
     </div>
   `;
@@ -567,8 +598,25 @@ function renderOverview(rows, f){
     },
     options:{
       rotation:-90, circumference:180, cutout:'72%',
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=> ctx.label+': '+fmtCompact(ctx.raw)}} }
-    }
+      plugins:{
+        legend:{display:false}, tooltip:{callbacks:{label:(ctx)=> ctx.label+': '+fmtCompact(ctx.raw)}},
+        datalabels:{ display:false }
+      }
+    },
+    plugins:[{
+      id:'gaugeCenterText',
+      beforeDraw(chart){
+        const {ctx, chartArea:{left,right,bottom}} = chart;
+        ctx.save();
+        const cx = (left+right)/2;
+        const cy = bottom - 6;
+        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+        ctx.font = "700 26px "+FONT_FAMILY;
+        ctx.fillStyle = achievePct>=100 ? COLORS.teal : COLORS.rose;
+        ctx.fillText(fmtNum(achievePct,1)+'%', cx, cy);
+        ctx.restore();
+      }
+    }]
   });
 
   // Monthly trend (horizontal bar, target vs actual) + achievement % line
@@ -617,25 +665,21 @@ function renderOverview(rows, f){
 }
 
 /* ---------------- TEAM ---------------- */
-function groupSum(rows, keyFn, period){
+function groupSum(rows, keyFn, periods){
   const map = new Map();
   rows.forEach(r=>{
     const key = keyFn(r) || '(unassigned)';
     if(!map.has(key)) map.set(key, {target:0, actual:0, visits:0});
     const g = map.get(key);
-    if(period==='YTD'){
-      ELAPSED_MONTHS.forEach(m=>{ g.target += r.months[m].tarValue; g.actual += r.months[m].sale; g.visits += r.months[m].visits; });
-    } else {
-      g.target += r.months[period].tarValue; g.actual += r.months[period].sale; g.visits += r.months[period].visits;
-    }
+    periods.forEach(m=>{ g.target += r.months[m].tarValue; g.actual += r.months[m].sale; g.visits += r.months[m].visits; });
   });
   return map;
 }
 
 function renderTeam(rows, f){
   const el = document.getElementById('page-team');
-  const bySenior = groupSum(rows, r=>r.senior, f.period);
-  const bySp = groupSum(rows, r=>r.sp, f.period);
+  const bySenior = groupSum(rows, r=>r.senior, f.periods);
+  const bySp = groupSum(rows, r=>r.sp, f.periods);
 
   const seniorEntries = [...bySenior.entries()].sort((a,b)=>b[1].actual-a[1].actual);
   const spEntries = [...bySp.entries()].sort((a,b)=>b[1].actual-a[1].actual);
@@ -687,13 +731,13 @@ function renderTeam(rows, f){
     data:{
       labels: seniorEntries.map(([n])=>n),
       datasets:[
-        {label:'Target', data:seniorEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2},
-        {label:'Actual', data:seniorEntries.map(([,g])=>g.actual), backgroundColor:COLORS.amber, borderRadius:2}
+        {label:'Target', data:seniorEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:seniorEntries.map(([,g])=>g.actual), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
       ]
     },
-    options:{ plugins:{legend:{display:false}}, scales:{
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
       x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
-      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...seniorEntries.map(([,g])=>Math.max(g.target,g.actual)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
   });
 
@@ -702,13 +746,13 @@ function renderTeam(rows, f){
     data:{
       labels: spEntries.map(([n])=>n),
       datasets:[
-        {label:'Target', data:spEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2},
-        {label:'Actual', data:spEntries.map(([,g])=>g.actual), backgroundColor:COLORS.amber, borderRadius:2}
+        {label:'Target', data:spEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:spEntries.map(([,g])=>g.actual), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
       ]
     },
-    options:{ plugins:{legend:{display:false}}, scales:{
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
       x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11}, maxRotation:40, minRotation:40}},
-      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...spEntries.map(([,g])=>Math.max(g.target,g.actual)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
   });
 }
@@ -721,8 +765,7 @@ function renderProducts(rows, f){
   const byBrand = new Map();
   rows.forEach(r=>{
     let sale=0, target=0;
-    if(f.period==='YTD'){ ELAPSED_MONTHS.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; }); }
-    else { sale = r.months[f.period].sale; target = r.months[f.period].tarValue; }
+    f.periods.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; });
 
     const pKey = r.product || '(unnamed product)';
     if(!byProduct.has(pKey)) byProduct.set(pKey, {sale:0, target:0, brand:r.brand});
@@ -769,13 +812,14 @@ function renderProducts(rows, f){
     type:'bar',
     data:{
       labels: topProducts.map(([n])=>n.length>28?n.slice(0,26)+'…':n),
-      datasets:[{ label:'Sales', data: topProducts.map(([,g])=>g.sale), backgroundColor:COLORS.teal, borderRadius:2 }]
+      datasets:[{ label:'Sales', data: topProducts.map(([,g])=>g.sale), backgroundColor:COLORS.teal, borderRadius:2, datalabels:endValueLabelCfg() }]
     },
     options:{
       indexAxis:'y',
+      layout:{padding:{right:58}},
       plugins:{legend:{display:false}, tooltip:{callbacks:{title:(items)=>topProducts[items[0].dataIndex][0]}}},
       scales:{
-        x:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        x:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...topProducts.map(([,g])=>g.sale),0)*1.18, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
         y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5}}}
       }
     }
@@ -786,13 +830,13 @@ function renderProducts(rows, f){
     data:{
       labels: brandEntries.map(([n])=>n),
       datasets:[
-        {label:'Target', data:brandEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2},
-        {label:'Actual', data:brandEntries.map(([,g])=>g.sale), backgroundColor:COLORS.amber, borderRadius:2}
+        {label:'Target', data:brandEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:brandEntries.map(([,g])=>g.sale), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
       ]
     },
-    options:{ plugins:{legend:{display:false}}, scales:{
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
       x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
-      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...brandEntries.map(([,g])=>Math.max(g.target,g.sale)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
   });
 
@@ -818,8 +862,7 @@ function renderCustomers(rows, f){
   const byCustomer = new Map();
   rows.forEach(r=>{
     let sale=0, target=0;
-    if(f.period==='YTD'){ ELAPSED_MONTHS.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; }); }
-    else { sale = r.months[f.period].sale; target = r.months[f.period].tarValue; }
+    f.periods.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; });
     const key = r.customer || '(unnamed customer)';
     if(!byCustomer.has(key)) byCustomer.set(key, {sale:0, target:0, custClass:r.custClass});
     byCustomer.get(key).sale += sale;
@@ -857,13 +900,14 @@ function renderCustomers(rows, f){
     type:'bar',
     data:{
       labels: topCustomers.map(([n])=>n.length>26?n.slice(0,24)+'…':n),
-      datasets:[{ label:'Sales', data: topCustomers.map(([,g])=>g.sale), backgroundColor:COLORS.teal, borderRadius:2 }]
+      datasets:[{ label:'Sales', data: topCustomers.map(([,g])=>g.sale), backgroundColor:COLORS.teal, borderRadius:2, datalabels:endValueLabelCfg() }]
     },
     options:{
       indexAxis:'y',
+      layout:{padding:{right:58}},
       plugins:{legend:{display:false}, tooltip:{callbacks:{title:(items)=>topCustomers[items[0].dataIndex][0]}}},
       scales:{
-        x:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        x:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...topCustomers.map(([,g])=>g.sale),0)*1.18, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
         y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5}}}
       }
     }
@@ -874,7 +918,16 @@ function renderCustomers(rows, f){
     type:'doughnut',
     data:{
       labels:['Top 15 customers','All other customers'],
-      datasets:[{ data:[topCustomers.reduce((s,[,g])=>s+g.sale,0), remainder], backgroundColor:[COLORS.teal, '#E7E2D3'], borderWidth:0 }]
+      datasets:[{ data:[topCustomers.reduce((s,[,g])=>s+g.sale,0), remainder], backgroundColor:[COLORS.teal, '#E7E2D3'], borderWidth:0,
+        datalabels:{
+          display:true, color:'#fff', font:{family:FONT_FAMILY, size:12, weight:'700'},
+          formatter:(value, ctx)=>{
+            const total = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            const pct = total>0 ? (value/total*100) : 0;
+            return pct>=6 ? fmtNum(pct,0)+'%' : '';
+          }
+        }
+      }]
     },
     options:{ plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } } }
   });
@@ -901,12 +954,8 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
   showPage(tab.dataset.page);
 });
 
-['periodSelect'].forEach(id=>{
-  document.getElementById(id).addEventListener('change', renderAll);
-});
-
 document.getElementById('resetBtn').addEventListener('click', ()=>{
-  ['senior','sp','brand'].forEach(key=>{
+  ['period','senior','sp','brand'].forEach(key=>{
     MS_SELECTED[key] = new Set();
     renderMsOptions(key);
     updateMsTrigger(key);
