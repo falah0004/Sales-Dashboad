@@ -673,9 +673,14 @@ function renderOverview(rows, f){
         </div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:18px;">
       <h3>Monthly Sales Trend <span class="sub">— actual value by month, ${agg.monthly.map(m=>MONTH_LABEL[m.m]).join(', ')}</span></h3>
       <canvas id="trendChart" height="90"></canvas>
+    </div>
+    <div class="card">
+      <h3>Forecast Accuracy Tracker <span class="sub">— monthly FC-VALUE vs Actual, full history</span></h3>
+      <canvas id="forecastAccuracyChart" height="80"></canvas>
+      <p class="foot-note" id="forecastAccuracyNote"></p>
     </div>
   `;
 
@@ -727,6 +732,46 @@ function renderOverview(rows, f){
       }
     }
   });
+
+  // Forecast Accuracy Tracker — always spans the full elapsed history, independent of Period filter.
+  const fcSeries = ELAPSED_MONTHS.map(m => rows.reduce((s,r)=>s+r.months[m].fcValue, 0));
+  const actSeries = ELAPSED_MONTHS.map(m => rows.reduce((s,r)=>s+r.months[m].sale, 0));
+  const biasSeries = fcSeries.map((fc,i) => fc>0 ? ((actSeries[i]-fc)/fc*100) : 0);
+  const avgBias = biasSeries.length ? biasSeries.reduce((a,b)=>a+b,0)/biasSeries.length : 0;
+
+  CHARTS.forecastAccuracy = new Chart(document.getElementById('forecastAccuracyChart'), {
+    type:'line',
+    data:{
+      labels: ELAPSED_MONTHS.map(m=>MONTH_LABEL[m]),
+      datasets:[
+        {
+          label:'Forecast (FC-VALUE)', data: fcSeries, borderColor:'#9AA5B1', backgroundColor:'#9AA5B1',
+          borderDash:[6,4], borderWidth:2, pointRadius:3, tension:0.25,
+          datalabels:{ display:true, anchor:'end', align:'top', offset:4, color:COLORS.inkSoft, font:{family:FONT_FAMILY, size:10, weight:'600'}, formatter:(v)=>fmtMillions(v) }
+        },
+        {
+          label:'Actual (SALE)', data: actSeries, borderColor:COLORS.teal, backgroundColor:COLORS.teal,
+          borderWidth:3, pointRadius:4, pointBackgroundColor:COLORS.teal, pointBorderColor:'#fff', pointBorderWidth:1.5, tension:0.25,
+          datalabels:{ display:true, anchor:'end', align:'bottom', offset:6, color:COLORS.teal, font:{family:FONT_FAMILY, size:10, weight:'700'}, formatter:(v)=>fmtMillions(v) }
+        }
+      ]
+    },
+    options:{
+      responsive:true,
+      layout:{ padding:{ top:26, bottom:10 } },
+      plugins:{ legend:{ position:'top', align:'end', labels:{ boxWidth:10, font:{family:FONT_FAMILY, size:12} } } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{ font:{family:FONT_FAMILY, size:11} } },
+        y:{ grid:{color:COLORS.hairline}, ticks:{ callback:(v)=>fmtCompact(v), font:{family:FONT_FAMILY, size:11} } }
+      }
+    }
+  });
+
+  const biasNote = document.getElementById('forecastAccuracyNote');
+  if(biasNote){
+    const dir = avgBias>=0 ? 'above' : 'below';
+    biasNote.innerHTML = `On average, actual sales have run <b class="num" style="color:${tierColor(avgBias>=0?100:60)};">${fmtNum(Math.abs(avgBias),1)}% ${dir}</b> the monthly FC-VALUE forecast across ${ELAPSED_MONTHS.length} recorded months.`;
+  }
 }
 
 /* ---------------- TEAM ---------------- */
@@ -789,6 +834,14 @@ function renderTeam(rows, f){
       </table>
       ${spEntries.length===0 ? '<p class="empty-note">No rows match the current filters.</p>':''}
     </div>
+    <div class="card" style="margin-top:18px;">
+      <h3>Sales per Visit <span class="sub">— efficiency by Sales Person, selected period</span></h3>
+      <canvas id="spvChart" height="${Math.max(160, spEntries.length*26)}"></canvas>
+    </div>
+    <div class="card" style="margin-top:18px;">
+      <h3>Monthly Performance Heatmap <span class="sub">— achievement % by Sales Person, full history</span></h3>
+      <div id="heatmapWrap" style="overflow-x:auto;"></div>
+    </div>
   `;
 
   CHARTS.senior = new Chart(document.getElementById('seniorChart'), {
@@ -820,6 +873,56 @@ function renderTeam(rows, f){
       y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...spEntries.map(([,g])=>Math.max(g.target,g.actual)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
   });
+
+  // Sales per Visit — efficiency (selected period, uses the same bySp totals as the leaderboard)
+  const spvEntries = [...spEntries].map(([name,g])=>[name, g.visits>0 ? g.actual/g.visits : 0])
+    .sort((a,b)=>b[1]-a[1]);
+  CHARTS.spv = new Chart(document.getElementById('spvChart'), {
+    type:'bar',
+    data:{
+      labels: spvEntries.map(([n])=>n),
+      datasets:[{ label:'Sales per Visit', data: spvEntries.map(([,v])=>v), backgroundColor: spvEntries.map((_,i)=>paletteColor(i)), borderRadius:2, datalabels:endValueLabelCfg() }]
+    },
+    options:{
+      indexAxis:'y',
+      layout:{padding:{right:58}},
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...spvEntries.map(([,v])=>v),0)*1.18, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5,weight:'600'}, color:COLORS.ink}}
+      }
+    }
+  });
+
+  // Monthly Performance Heatmap — sales person x elapsed month, achievement % tier-colored, full history (ignores Period filter)
+  const heatWrap = document.getElementById('heatmapWrap');
+  if(heatWrap){
+    const heatMap = new Map(); // sp -> {month -> {target, actual}}
+    rows.forEach(r=>{
+      const key = r.sp || '(unassigned)';
+      if(!heatMap.has(key)) heatMap.set(key, {});
+      const cellMap = heatMap.get(key);
+      ELAPSED_MONTHS.forEach(m=>{
+        if(!cellMap[m]) cellMap[m] = {target:0, actual:0};
+        cellMap[m].target += r.months[m].tarValue;
+        cellMap[m].actual += r.months[m].sale;
+      });
+    });
+    const heatOrder = spEntries.map(([name])=>name).filter(name=>heatMap.has(name));
+    let tableHtml = '<table class="led" style="min-width:560px;"><thead><tr><th>Sales Person</th>' +
+      ELAPSED_MONTHS.map(m=>`<th class="num">${MONTH_LABEL[m]}</th>`).join('') + '</tr></thead><tbody>';
+    heatOrder.forEach(name=>{
+      const cells = heatMap.get(name);
+      tableHtml += `<tr><td class="name">${name}</td>` + ELAPSED_MONTHS.map(m=>{
+        const c = cells[m] || {target:0, actual:0};
+        const pct = c.target>0 ? (c.actual/c.target*100) : 0;
+        const bg = tierColor(pct);
+        return `<td class="num" style="background:${bg}22; color:${bg}; font-weight:700;">${fmtNum(pct,0)}%</td>`;
+      }).join('') + '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+    heatWrap.innerHTML = heatOrder.length ? tableHtml : '<p class="empty-note">No rows match the current filters.</p>';
+  }
 }
 
 /* ---------------- PRODUCTS & BRANDS ---------------- */
@@ -828,6 +931,7 @@ function renderProducts(rows, f){
 
   const byProduct = new Map();
   const byBrand = new Map();
+  const byProductClass = new Map();
   rows.forEach(r=>{
     let sale=0, target=0;
     f.periods.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; });
@@ -841,10 +945,31 @@ function renderProducts(rows, f){
     if(!byBrand.has(bKey)) byBrand.set(bKey, {sale:0, target:0});
     byBrand.get(bKey).sale += sale;
     byBrand.get(bKey).target += target;
+
+    const pcKey = r.productClass || '(unclassified)';
+    if(!byProductClass.has(pcKey)) byProductClass.set(pcKey, {sale:0, target:0});
+    byProductClass.get(pcKey).sale += sale;
+    byProductClass.get(pcKey).target += target;
   });
 
   const topProducts = [...byProduct.entries()].sort((a,b)=>b[1].sale-a[1].sale).slice(0,20);
   const brandEntries = [...byBrand.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+  const productClassEntries = [...byProductClass.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+
+  // Pareto: cumulative contribution across ALL products (not just top 20), to find the true 80% cutoff.
+  const allProductsSorted = [...byProduct.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+  const totalAllSale = allProductsSorted.reduce((s,[,g])=>s+g.sale, 0);
+  let running = 0, paretoCount = 0;
+  for(const [,g] of allProductsSorted){
+    running += g.sale;
+    paretoCount++;
+    if(totalAllSale>0 && running/totalAllSale*100 >= 80) break;
+  }
+  let cum = 0;
+  const paretoData = topProducts.map(([name,g])=>{
+    cum += g.sale;
+    return { name, sale:g.sale, cumPct: totalAllSale>0 ? (cum/totalAllSale*100) : 0 };
+  });
 
   el.innerHTML = `
     <div class="grid cols-2" style="margin-bottom:18px; align-items:start;">
@@ -859,6 +984,17 @@ function renderProducts(rows, f){
           <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Actual</span>
         </div>
         <canvas id="brandChart" height="220"></canvas>
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-bottom:18px; align-items:start;">
+      <div class="card">
+        <h3>Target vs Actual — by Product Class</h3>
+        <canvas id="productClassChart" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h3>Product Pareto <span class="sub">— cumulative contribution, top 20</span></h3>
+        <canvas id="paretoChart" height="220"></canvas>
+        <p class="foot-note">${fmtNum(paretoCount)} of ${fmtNum(allProductsSorted.length)} products (${fmtNum(allProductsSorted.length?paretoCount/allProductsSorted.length*100:0,0)}%) account for 80% of total sales value.</p>
       </div>
     </div>
     <div class="card">
@@ -905,6 +1041,50 @@ function renderProducts(rows, f){
     }}
   });
 
+  CHARTS.productClass = new Chart(document.getElementById('productClassChart'), {
+    type:'bar',
+    data:{
+      labels: productClassEntries.map(([n])=>n),
+      datasets:[
+        {label:'Target', data:productClassEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:productClassEntries.map(([,g])=>g.sale), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
+      ]
+    },
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...productClassEntries.map(([,g])=>Math.max(g.target,g.sale)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+
+  CHARTS.pareto = new Chart(document.getElementById('paretoChart'), {
+    type:'bar',
+    data:{
+      labels: paretoData.map(d=>d.name.length>16?d.name.slice(0,14)+'…':d.name),
+      datasets:[
+        {
+          type:'bar', label:'Sales', data: paretoData.map(d=>d.sale), backgroundColor:COLORS.teal, borderRadius:2, yAxisID:'y', order:2
+        },
+        {
+          type:'line', label:'Cumulative %', data: paretoData.map(d=>d.cumPct), yAxisID:'yPct', order:1,
+          borderColor:'#744EC2', backgroundColor:'#744EC2', borderWidth:2, pointRadius:3, tension:0.2,
+          datalabels:{
+            display:(ctx)=> ctx.dataIndex%3===0 || ctx.dataIndex===ctx.dataset.data.length-1,
+            anchor:'end', align:'top', offset:4, color:'#744EC2', font:{family:FONT_FAMILY, size:10, weight:'700'},
+            formatter:(v)=> fmtNum(v,0)+'%'
+          }
+        }
+      ]
+    },
+    options:{
+      plugins:{ legend:{ position:'top', align:'end', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } },
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:10}, maxRotation:50, minRotation:50}},
+        y:{position:'left', grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        yPct:{position:'right', min:0, max:110, grid:{display:false}, ticks:{callback:v=>v+'%', font:{family:FONT_FAMILY,size:11}}}
+      }
+    }
+  });
+
   const allProducts = [...byProduct.entries()].sort((a,b)=>b[1].sale-a[1].sale);
   function renderProductTable(filterText){
     const q = (filterText||'').toLowerCase();
@@ -925,6 +1105,7 @@ function renderCustomers(rows, f){
   const el = document.getElementById('page-customers');
 
   const byCustomer = new Map();
+  const byCustomerClass = new Map();
   rows.forEach(r=>{
     let sale=0, target=0;
     f.periods.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; });
@@ -932,10 +1113,16 @@ function renderCustomers(rows, f){
     if(!byCustomer.has(key)) byCustomer.set(key, {sale:0, target:0, custClass:r.custClass});
     byCustomer.get(key).sale += sale;
     byCustomer.get(key).target += target;
+
+    const ccKey = r.custClass || '(unclassified)';
+    if(!byCustomerClass.has(ccKey)) byCustomerClass.set(ccKey, {sale:0, target:0});
+    byCustomerClass.get(ccKey).sale += sale;
+    byCustomerClass.get(ccKey).target += target;
   });
 
   const topCustomers = [...byCustomer.entries()].sort((a,b)=>b[1].sale-a[1].sale).slice(0,15);
   const totalSale = [...byCustomer.values()].reduce((s,g)=>s+g.sale,0);
+  const customerClassEntries = [...byCustomerClass.entries()].sort((a,b)=>b[1].sale-a[1].sale);
 
   el.innerHTML = `
     <div class="grid cols-2" style="margin-bottom:18px; align-items:start;">
@@ -948,6 +1135,14 @@ function renderCustomers(rows, f){
         <canvas id="custPie" height="180"></canvas>
         <p class="foot-note">Top 15 customers represent <b class="num">${fmtNum(totalSale>0 ? (topCustomers.reduce((s,[,g])=>s+g.sale,0)/totalSale*100):0,1)}%</b> of filtered sales value across ${byCustomer.size.toLocaleString()} customers.</p>
       </div>
+    </div>
+    <div class="card" style="margin-bottom:18px;">
+      <h3>Target vs Actual — by Customer Class</h3>
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.tealSoft}"></span>Target</span>
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Actual</span>
+      </div>
+      <canvas id="customerClassChart" height="180"></canvas>
     </div>
     <div class="card">
       <h3>All Customers</h3>
@@ -995,6 +1190,21 @@ function renderCustomers(rows, f){
       }]
     },
     options:{ plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } } }
+  });
+
+  CHARTS.customerClass = new Chart(document.getElementById('customerClassChart'), {
+    type:'bar',
+    data:{
+      labels: customerClassEntries.map(([n])=>n),
+      datasets:[
+        {label:'Target', data:customerClassEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:customerClassEntries.map(([,g])=>g.sale), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
+      ]
+    },
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...customerClassEntries.map(([,g])=>Math.max(g.target,g.sale)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
   });
 
   const allCustomers = [...byCustomer.entries()].sort((a,b)=>b[1].sale-a[1].sale);
