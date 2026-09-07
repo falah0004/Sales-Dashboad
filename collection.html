@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collection Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --paper:#F7F9FC;
+    --paper-raised:#FFFFFF;
+    --ink:#201F1E;
+    --ink-soft:#605E5C;
+    --teal:#118DFF;
+    --teal-soft:#8FC7FF;
+    --amber:#0B3C6B;
+    --hairline:#E7E9ED;
+    --hairline-strong:#D2D6DC;
+    --green:#1AAB40;
+    --gold:#FFB900;
+    --red:#E04B4B;
+    --shadow: 0 1px 2px rgba(16,30,54,.06), 0 4px 14px rgba(16,30,54,.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums;}
+
+  .masthead{
+    border-bottom:1px solid var(--hairline);
+    padding:22px clamp(16px,4vw,48px) 16px;
+    display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap;
+    background:var(--paper-raised);
+  }
+  .masthead .kicker{ font-size:11.5px; letter-spacing:.06em; color:var(--teal); margin:0 0 4px; font-weight:600; }
+  .masthead h1{ font-weight:600; font-size:clamp(20px,2.6vw,26px); margin:0; line-height:1.15; letter-spacing:-0.01em; color:var(--ink); }
+  .masthead .meta{ font-size:12.5px; color:var(--ink-soft); text-align:right; line-height:1.6; }
+  .masthead .meta button{
+    background:var(--teal); border:1px solid var(--teal); color:#fff;
+    font-family:inherit; font-size:12.5px; font-weight:600; padding:7px 14px; cursor:pointer;
+    border-radius:6px; margin-left:8px;
+  }
+  .masthead .meta button:hover{ background:#0d78dc; }
+
+  .filterbar{
+    display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end;
+    padding:14px clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline);
+    background:var(--paper-raised);
+  }
+  .field{ display:flex; flex-direction:column; gap:5px; min-width:150px; }
+  .field label{ font-size:11px; letter-spacing:.03em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
+  .filter-reset{ align-self:flex-end; background:none; border:none; color:var(--teal); font-size:12.5px; font-weight:600; cursor:pointer; padding:8px 0; font-family:inherit; }
+  .filter-reset:hover{ text-decoration:underline; }
+
+  .ms-field{ position:relative; }
+  .ms-trigger{
+    font-family:inherit; font-size:13.5px; padding:7px 30px 7px 10px; text-align:left;
+    border:1px solid var(--hairline-strong); background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23605E5C"/></svg>') no-repeat right 10px center;
+    color:var(--ink); border-radius:6px; min-width:150px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .ms-trigger.open{ outline:2px solid var(--teal); outline-offset:0; border-color:var(--teal); }
+  .ms-panel{
+    display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:50;
+    background:#fff; border:1px solid var(--hairline-strong); border-radius:8px; box-shadow:var(--shadow);
+    min-width:220px; max-width:280px; padding:8px 0;
+  }
+  .ms-panel.open{ display:block; }
+  .ms-panel-actions{ display:flex; gap:10px; padding:2px 12px 8px; border-bottom:1px solid var(--hairline); margin-bottom:4px; }
+  .ms-panel-actions button{ background:none; border:none; color:var(--teal); font-size:12px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; }
+  .ms-panel-actions button:hover{ text-decoration:underline; }
+  .ms-options{ max-height:240px; overflow-y:auto; padding:0 4px; }
+  .ms-option{ display:flex; align-items:center; gap:8px; padding:6px 8px; font-size:13.5px; cursor:pointer; border-radius:6px; }
+  .ms-option:hover{ background:#E9F3FE; }
+  .ms-option input[type="checkbox"]{ accent-color:var(--teal); width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+  .ms-option label{ cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:400; color:var(--ink); }
+
+  .tabs{ display:flex; gap:4px; padding:0 clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline-strong); background:var(--paper); overflow-x:auto; }
+  .tab{ font-size:13.5px; font-weight:600; padding:13px 16px; cursor:pointer; color:var(--ink-soft); border-bottom:3px solid transparent; white-space:nowrap; user-select:none; }
+  .tab.active{ color:var(--teal); border-bottom-color:var(--teal); }
+  .tab:hover:not(.active){ color:var(--ink); }
+
+  main{ padding:22px clamp(16px,4vw,48px) 60px; max-width:1400px; margin:0 auto; }
+  .canvas-page{ display:none; }
+  .canvas-page.active{ display:block; animation:fadein .25s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+  .grid{ display:grid; gap:16px; }
+  .grid.cols-3{ grid-template-columns:repeat(3,1fr); }
+  .grid.cols-2{ grid-template-columns:repeat(2,1fr); }
+  @media(max-width:900px){ .grid.cols-3,.grid.cols-2{ grid-template-columns:1fr; } }
+
+  .card{ background:var(--paper-raised); border:1px solid var(--hairline); border-radius:10px; padding:20px 22px; box-shadow:var(--shadow); }
+  .card h3{ font-size:13px; color:var(--ink); margin:0 0 16px; font-weight:600; }
+  .card h3 span.sub{ color:var(--ink-soft); font-weight:400; }
+
+  .kpi-value{ font-weight:700; font-size:38px; line-height:1; margin:0 0 6px; color:var(--ink); }
+  .kpi-label{ font-size:12.5px; color:var(--ink-soft); }
+  .kpi-sub{ font-size:12.5px; margin-top:10px; color:var(--ink-soft); }
+  .kpi-sub b{ color:var(--ink); font-weight:700; }
+
+  table.led{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.led th{ text-align:left; font-size:11px; letter-spacing:.03em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; padding:9px 10px; border-bottom:2px solid var(--hairline-strong); }
+  table.led td{ padding:9px 10px; border-bottom:1px solid var(--hairline); }
+  table.led td.name{ font-weight:700; }
+  table.led tr:hover td{ background:#E9F3FE; }
+  table.led td.num, table.led th.num{ text-align:right; }
+  .bar-cell{ display:flex; align-items:center; gap:8px; }
+  .bar-track{ flex:1; height:6px; background:var(--hairline); border-radius:3px; overflow:hidden; min-width:60px; }
+  .bar-fill{ height:100%; border-radius:3px; }
+  .status-pill{ display:inline-block; padding:2px 9px; border-radius:10px; font-size:11.5px; font-weight:700; }
+
+  .legend-row{ display:flex; gap:18px; margin-bottom:14px; flex-wrap:wrap; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); font-weight:500; }
+  .legend-dot{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+  .empty-note{ font-size:13px; color:var(--ink-soft); padding:30px 0; text-align:center; }
+  .loading{ padding:80px 20px; text-align:center; color:var(--ink-soft); font-weight:500; }
+  .error-box{ margin:26px clamp(16px,4vw,48px); padding:18px 20px; border:1px solid var(--red); background:#FCEBEE; color:var(--red); font-size:13.5px; border-radius:8px; line-height:1.6; }
+  .search-wrap{ margin-bottom:14px; }
+  .foot-note{ font-size:11.5px; color:var(--ink-soft); margin-top:8px; }
+  ::-webkit-scrollbar{ height:8px; width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--hairline-strong); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div>
+    <p class="kicker">DERMA HEALTH COSMETICS · UAE</p>
+    <h1>Collection Dashboard</h1>
+  </div>
+  <div class="meta">
+    <div id="lastUpdated">Not loaded yet</div>
+    <div><button id="refreshBtn">↻ Refresh data</button></div>
+  </div>
+</div>
+
+<div class="filterbar">
+  <div class="field ms-field" data-key="month">
+    <label>Month / Year</label>
+    <button type="button" class="ms-trigger" id="month-trigger">All months</button>
+    <div class="ms-panel" id="month-panel">
+      <div class="ms-panel-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Clear</button></div>
+      <div class="ms-options" id="month-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="senior">
+    <label>Senior</label>
+    <button type="button" class="ms-trigger" id="senior-trigger">All seniors</button>
+    <div class="ms-panel" id="senior-panel">
+      <div class="ms-panel-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Clear</button></div>
+      <div class="ms-options" id="senior-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="agent">
+    <label>Agent</label>
+    <button type="button" class="ms-trigger" id="agent-trigger">All agents</button>
+    <div class="ms-panel" id="agent-panel">
+      <div class="ms-panel-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Clear</button></div>
+      <div class="ms-options" id="agent-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="city">
+    <label>City</label>
+    <button type="button" class="ms-trigger" id="city-trigger">All cities</button>
+    <div class="ms-panel" id="city-panel">
+      <div class="ms-panel-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Clear</button></div>
+      <div class="ms-options" id="city-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="status">
+    <label>Status</label>
+    <button type="button" class="ms-trigger" id="status-trigger">All statuses</button>
+    <div class="ms-panel" id="status-panel">
+      <div class="ms-panel-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Clear</button></div>
+      <div class="ms-options" id="status-options"></div>
+    </div>
+  </div>
+  <button class="filter-reset" id="resetBtn">Reset filters</button>
+</div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-page="overview">01 · Overview</div>
+  <div class="tab" data-page="team">02 · By Senior &amp; Agent</div>
+  <div class="tab" data-page="city">03 · By City</div>
+  <div class="tab" data-page="worklist">04 · Outstanding Worklist</div>
+</div>
+
+<main id="main">
+  <div class="loading">Loading collection data from Google Sheets…</div>
+</main>
+
+<script>
+/* ---------------- CONFIG ---------------- */
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRNgXzKKEFqkFL3bOfr-0_Fx69XZow1nHQWEiKYk-BpBUQvsD5YQLQqFLrBoONYTw/pub?gid=1647206775&single=true&output=csv";
+
+const COLORS = { teal:'#118DFF', tealSoft:'#8FC7FF', amber:'#0B3C6B', ink:'#201F1E', inkSoft:'#605E5C', hairline:'#E7E9ED', green:'#1AAB40', gold:'#FFB900', red:'#E04B4B' };
+const PALETTE = ['#118DFF','#12239E','#E66C37','#6B007B','#E044A7','#744EC2','#D9B300','#1AAB40','#DA3B01','#00B7C3'];
+function paletteColor(i){ return PALETTE[i % PALETTE.length]; }
+function tierColor(pct){ if(pct>=100) return COLORS.green; if(pct>=40) return COLORS.gold; return COLORS.red; }
+const FONT_FAMILY = "'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif";
+
+if(typeof ChartDataLabels !== 'undefined'){
+  Chart.register(ChartDataLabels);
+  Chart.defaults.set('plugins.datalabels', { display:false });
+}
+
+let RAW = [];
+let CHARTS = {};
+
+function fmtNum(n, decimals=0){ if(n===null||n===undefined||isNaN(n)) return '0'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:decimals,maximumFractionDigits:decimals}); }
+function fmtCompact(n){ if(n===null||n===undefined||isNaN(n)) return '0'; const abs=Math.abs(n); if(abs>=1e6) return (n/1e6).toFixed(2)+'M'; if(abs>=1e3) return (n/1e3).toFixed(1)+'K'; return fmtNum(n); }
+function num(v){ if(v===null||v===undefined||v==='') return 0; const n = typeof v==='number'?v:parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?0:n; }
+
+function loadData(){
+  document.getElementById('main').innerHTML = '<div class="loading">Loading collection data from Google Sheets…</div>';
+  Papa.parse(CSV_URL, {
+    download:true, header:true, skipEmptyLines:true,
+    complete: function(results){
+      try{
+        processRows(results.data);
+        document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});
+        buildFilterOptions();
+        renderAll();
+      }catch(e){
+        showError('The sheet loaded but could not be read. Details: ' + e.message);
+        console.error(e);
+      }
+    },
+    error: function(err){
+      showError('Could not load the published CSV. Make sure the Collection tab is still published individually (File → Share → Publish to web) and that the link is unchanged. Technical detail: ' + err);
+    }
+  });
+}
+
+function showError(msg){
+  document.getElementById('main').innerHTML = '<div class="error-box"><strong>Could not load data.</strong><br>' + msg + '</div>';
+}
+
+function processRows(rows){
+  RAW = rows.map(r => ({
+    customer: (r['CUSTOMER']||'').trim(),
+    city: (r['CITY']||'').trim(),
+    due: num(r['DUE AMOUNT']),
+    collected: num(r['COLLECTED']),
+    agentId: (r['AGENT_ID']||'').trim(),
+    agent: (r['AGENT NAME']||'').trim(),
+    actionPlan: (r['ACTION PLAN']||'').trim(),
+    status: (r['STATUS']||'').trim(),
+    month: (r['MONTH / YEAR']||'').trim(),
+    senior: (r['Senior']||'').trim()
+  })).filter(r => r.customer || r.agent);
+}
+
+/* ---------------- FILTERS (multi-select) ---------------- */
+function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean))].sort(); }
+
+const MS_SELECTED = { month:new Set(), senior:new Set(), agent:new Set(), city:new Set(), status:new Set() };
+const MS_LABELS = { month:'months', senior:'seniors', agent:'agents', city:'cities', status:'statuses' };
+let MS_VALUES = { month:[], senior:[], agent:[], city:[], status:[] };
+
+function buildFilterOptions(){
+  MS_VALUES.month = uniqueSorted(RAW.map(r=>r.month));
+  MS_VALUES.senior = uniqueSorted(RAW.map(r=>r.senior));
+  MS_VALUES.agent = uniqueSorted(RAW.map(r=>r.agent));
+  MS_VALUES.city = uniqueSorted(RAW.map(r=>r.city));
+  MS_VALUES.status = uniqueSorted(RAW.map(r=>r.status));
+
+  ['month','senior','agent','city','status'].forEach(key=>{
+    MS_SELECTED[key] = new Set();
+    renderMsOptions(key);
+    updateMsTrigger(key);
+  });
+}
+
+function renderMsOptions(key){
+  const container = document.getElementById(key+'-options');
+  container.innerHTML = MS_VALUES[key].map((val,i)=>{
+    const id = 'ms-'+key+'-'+i;
+    const checked = MS_SELECTED[key].has(val) ? 'checked' : '';
+    return `<div class="ms-option"><input type="checkbox" id="${id}" data-key="${key}" data-value="${val.replace(/"/g,'&quot;')}" ${checked}><label for="${id}">${val}</label></div>`;
+  }).join('') || '<div class="ms-option" style="color:var(--ink-soft);">No values found</div>';
+}
+
+function updateMsTrigger(key){
+  const sel = MS_SELECTED[key];
+  const trigger = document.getElementById(key+'-trigger');
+  if(sel.size===0){ trigger.textContent = 'All ' + MS_LABELS[key]; }
+  else if(sel.size===1){ trigger.textContent = [...sel][0]; }
+  else { trigger.textContent = sel.size + ' selected'; }
+}
+
+function closeAllMsPanels(){
+  document.querySelectorAll('.ms-panel.open').forEach(p=>p.classList.remove('open'));
+  document.querySelectorAll('.ms-trigger.open').forEach(t=>t.classList.remove('open'));
+}
+
+['month','senior','agent','city','status'].forEach(key=>{
+  document.getElementById(key+'-trigger').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const panel = document.getElementById(key+'-panel');
+    const isOpen = panel.classList.contains('open');
+    closeAllMsPanels();
+    if(!isOpen){ panel.classList.add('open'); document.getElementById(key+'-trigger').classList.add('open'); }
+  });
+  document.getElementById(key+'-panel').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const actionBtn = e.target.closest('button[data-action]');
+    if(actionBtn){
+      if(actionBtn.dataset.action==='all'){ MS_SELECTED[key] = new Set(MS_VALUES[key]); }
+      if(actionBtn.dataset.action==='none'){ MS_SELECTED[key] = new Set(); }
+      renderMsOptions(key); updateMsTrigger(key); renderAll();
+      return;
+    }
+    const checkbox = e.target.closest('input[type="checkbox"]');
+    if(checkbox){
+      const val = checkbox.dataset.value;
+      if(checkbox.checked) MS_SELECTED[key].add(val); else MS_SELECTED[key].delete(val);
+      updateMsTrigger(key); renderAll();
+    }
+  });
+});
+document.addEventListener('click', closeAllMsPanels);
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  ['month','senior','agent','city','status'].forEach(key=>{
+    MS_SELECTED[key] = new Set(); renderMsOptions(key); updateMsTrigger(key);
+  });
+  renderAll();
+});
+document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+function getFilters(){
+  return { month:MS_SELECTED.month, senior:MS_SELECTED.senior, agent:MS_SELECTED.agent, city:MS_SELECTED.city, status:MS_SELECTED.status };
+}
+function filteredRows(f){
+  return RAW.filter(r =>
+    (f.month.size===0 || f.month.has(r.month)) &&
+    (f.senior.size===0 || f.senior.has(r.senior)) &&
+    (f.agent.size===0 || f.agent.has(r.agent)) &&
+    (f.city.size===0 || f.city.has(r.city)) &&
+    (f.status.size===0 || f.status.has(r.status))
+  );
+}
+
+/* ---------------- RENDER ORCHESTRATION ---------------- */
+function destroyCharts(){ Object.values(CHARTS).forEach(c=>c&&c.destroy()); CHARTS={}; }
+
+function renderAll(){
+  destroyCharts();
+  const f = getFilters();
+  const rows = filteredRows(f);
+  const activePage = document.querySelector('.tab.active').dataset.page;
+  document.getElementById('main').innerHTML = `
+    <section class="canvas-page" id="page-overview"></section>
+    <section class="canvas-page" id="page-team"></section>
+    <section class="canvas-page" id="page-city"></section>
+    <section class="canvas-page" id="page-worklist"></section>
+  `;
+  renderOverview(rows);
+  renderTeam(rows);
+  renderCity(rows);
+  renderWorklist(rows);
+  showPage(activePage);
+}
+
+function showPage(name){
+  document.querySelectorAll('.canvas-page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.page===name));
+}
+document.getElementById('tabs').addEventListener('click', (e)=>{
+  const tab = e.target.closest('.tab');
+  if(!tab) return;
+  showPage(tab.dataset.page);
+});
+
+/* ---------------- OVERVIEW ---------------- */
+function renderOverview(rows){
+  const el = document.getElementById('page-overview');
+  const totalDue = rows.reduce((s,r)=>s+r.due,0);
+  const totalCollected = rows.reduce((s,r)=>s+r.collected,0);
+  const pct = totalDue>0 ? (totalCollected/totalDue*100) : 0;
+  const statusYes = rows.filter(r=>r.status.toLowerCase()==='yes');
+  const statusNo = rows.filter(r=>r.status.toLowerCase()!=='yes');
+  const arcColor = tierColor(pct);
+
+  el.innerHTML = `
+    <div class="grid cols-3" style="margin-bottom:18px;">
+      <div class="card">
+        <h3>Collected vs Due</h3>
+        <canvas id="gaugeChart" height="180"></canvas>
+        <div class="kpi-sub" style="text-align:center; margin-top:-6px;">
+          <span class="num" style="font-size:15px;"><b>${fmtCompact(totalCollected)}</b></span> of
+          <span class="num"><b>${fmtCompact(totalDue)}</b></span> due
+        </div>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
+        <h3>Outstanding Balance</h3>
+        <p class="kpi-value num" style="color:${COLORS.red};">${fmtCompact(totalDue-totalCollected)}</p>
+        <p class="kpi-label">Still to be collected across ${rows.length.toLocaleString()} customer accounts.</p>
+      </div>
+      <div class="card">
+        <h3>Status Breakdown <span class="sub">— by account count</span></h3>
+        <canvas id="statusPie" height="140"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Due vs Collected — by Agent <span class="sub">(top 15 by due amount)</span></h3>
+      <canvas id="overviewAgentChart" height="${Math.max(180, 15*24)}"></canvas>
+    </div>
+  `;
+
+  const gaugeActual = Math.min(totalCollected, totalDue);
+  const gaugeRemain = Math.max(totalDue-totalCollected, 0);
+  CHARTS.gauge = new Chart(document.getElementById('gaugeChart'), {
+    type:'doughnut',
+    data:{ labels:['Collected','Outstanding'], datasets:[{ data:[gaugeActual, gaugeRemain], backgroundColor:[arcColor,'#EDEDED'], borderWidth:0 }] },
+    options:{ rotation:-90, circumference:180, cutout:'72%', plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>ctx.label+': '+fmtCompact(ctx.raw)}}, datalabels:{display:false} } },
+    plugins:[{
+      id:'gaugeCenterText',
+      beforeDraw(chart){
+        const {ctx, chartArea:{left,right,bottom}} = chart;
+        ctx.save(); const cx=(left+right)/2, cy=bottom-6;
+        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+        ctx.font = "700 26px "+FONT_FAMILY; ctx.fillStyle = arcColor;
+        ctx.fillText(fmtNum(pct,1)+'%', cx, cy);
+        ctx.restore();
+      }
+    }]
+  });
+
+  CHARTS.statusPie = new Chart(document.getElementById('statusPie'), {
+    type:'doughnut',
+    data:{
+      labels:['Action taken (Yes)','Pending (No)'],
+      datasets:[{ data:[statusYes.length, statusNo.length], backgroundColor:[COLORS.green, COLORS.red], borderWidth:0,
+        datalabels:{ display:true, color:'#fff', font:{family:FONT_FAMILY,size:12,weight:'700'}, formatter:(v,ctx)=>{
+          const total = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+          return total>0 ? Math.round(v/total*100)+'%' : '';
+        }}
+      }]
+    },
+    options:{ plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } } }
+  });
+
+  const byAgentMap = new Map();
+  rows.forEach(r=>{
+    if(!byAgentMap.has(r.agent)) byAgentMap.set(r.agent, {due:0, collected:0});
+    byAgentMap.get(r.agent).due += r.due;
+    byAgentMap.get(r.agent).collected += r.collected;
+  });
+  const topAgents = [...byAgentMap.entries()].sort((a,b)=>b[1].due-a[1].due).slice(0,15);
+  CHARTS.overviewAgent = new Chart(document.getElementById('overviewAgentChart'), {
+    type:'bar',
+    data:{
+      labels: topAgents.map(([n])=>n),
+      datasets:[
+        {label:'Due', data:topAgents.map(([,g])=>g.due), backgroundColor:COLORS.tealSoft, borderRadius:2},
+        {label:'Collected', data:topAgents.map(([,g])=>g.collected), backgroundColor:COLORS.amber, borderRadius:2}
+      ]
+    },
+    options:{
+      indexAxis:'y',
+      plugins:{ legend:{ position:'top', align:'end', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } },
+      scales:{
+        x:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5,weight:'600'}, color:COLORS.ink}}
+      }
+    }
+  });
+}
+
+/* ---------------- BY SENIOR & AGENT ---------------- */
+function groupSum(rows, keyFn){
+  const map = new Map();
+  rows.forEach(r=>{
+    const key = keyFn(r) || '(unassigned)';
+    if(!map.has(key)) map.set(key, {due:0, collected:0, count:0});
+    const g = map.get(key);
+    g.due += r.due; g.collected += r.collected; g.count += 1;
+  });
+  return map;
+}
+
+function renderTeam(rows){
+  const el = document.getElementById('page-team');
+  const bySenior = groupSum(rows, r=>r.senior);
+  const byAgent = groupSum(rows, r=>r.agent);
+  const seniorEntries = [...bySenior.entries()].sort((a,b)=>b[1].due-a[1].due);
+  const agentEntries = [...byAgent.entries()].sort((a,b)=>b[1].due-a[1].due);
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:18px;">
+      <h3>Due vs Collected — by Senior</h3>
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.tealSoft}"></span>Due</span>
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Collected</span>
+      </div>
+      <canvas id="seniorChart" height="90"></canvas>
+    </div>
+    <div class="card">
+      <h3>Agent Leaderboard <span class="sub">— sorted by outstanding due</span></h3>
+      <table class="led">
+        <thead><tr><th>Agent</th><th>Senior</th><th class="num">Due</th><th class="num">Collected</th><th>Collection Rate</th><th class="num">Accounts</th></tr></thead>
+        <tbody>
+          ${agentEntries.map(([name,g])=>{
+            const pct = g.due>0 ? (g.collected/g.due*100) : 0;
+            const barPct = Math.min(pct,100);
+            const seniorLookup = rows.find(r=>r.agent===name);
+            return `<tr>
+              <td class="name">${name}</td>
+              <td>${seniorLookup ? seniorLookup.senior : '—'}</td>
+              <td class="num">${fmtCompact(g.due)}</td>
+              <td class="num">${fmtCompact(g.collected)}</td>
+              <td>
+                <div class="bar-cell">
+                  <div class="bar-track"><div class="bar-fill" style="width:${barPct}%; background:${tierColor(pct)}"></div></div>
+                  <span class="num" style="min-width:48px; text-align:right; color:${tierColor(pct)}; font-weight:700;">${fmtNum(pct,0)}%</span>
+                </div>
+              </td>
+              <td class="num">${g.count}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      ${agentEntries.length===0 ? '<p class="empty-note">No rows match the current filters.</p>' : ''}
+    </div>
+  `;
+
+  CHARTS.senior = new Chart(document.getElementById('seniorChart'), {
+    type:'bar',
+    data:{
+      labels: seniorEntries.map(([n])=>n),
+      datasets:[
+        {label:'Due', data:seniorEntries.map(([,g])=>g.due), backgroundColor:COLORS.tealSoft, borderRadius:2},
+        {label:'Collected', data:seniorEntries.map(([,g])=>g.collected), backgroundColor:COLORS.amber, borderRadius:2}
+      ]
+    },
+    options:{ plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12,weight:'600'}, color:COLORS.ink}},
+      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+}
+
+/* ---------------- BY CITY ---------------- */
+function renderCity(rows){
+  const el = document.getElementById('page-city');
+  const byCity = groupSum(rows, r=>r.city);
+  const cityEntries = [...byCity.entries()].sort((a,b)=>b[1].due-a[1].due);
+
+  el.innerHTML = `
+    <div class="card">
+      <h3>Due vs Collected — by City</h3>
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.tealSoft}"></span>Due</span>
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Collected</span>
+      </div>
+      <canvas id="cityChart" height="90"></canvas>
+    </div>
+  `;
+  CHARTS.city = new Chart(document.getElementById('cityChart'), {
+    type:'bar',
+    data:{
+      labels: cityEntries.map(([n])=>n),
+      datasets:[
+        {label:'Due', data:cityEntries.map(([,g])=>g.due), backgroundColor:COLORS.tealSoft, borderRadius:2},
+        {label:'Collected', data:cityEntries.map(([,g])=>g.collected), backgroundColor:COLORS.amber, borderRadius:2}
+      ]
+    },
+    options:{ plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11}, maxRotation:35, minRotation:35}},
+      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+}
+
+/* ---------------- OUTSTANDING WORKLIST ---------------- */
+function renderWorklist(rows){
+  const el = document.getElementById('page-worklist');
+  const outstanding = rows.filter(r=>r.due-r.collected > 0).sort((a,b)=>(b.due-b.collected)-(a.due-a.collected));
+
+  el.innerHTML = `
+    <div class="card">
+      <h3>Outstanding Worklist <span class="sub">— sorted by largest unpaid balance</span></h3>
+      <div class="search-wrap">
+        <input type="text" id="worklistSearch" placeholder="Search customer name…" style="width:100%; max-width:340px; padding:8px 10px; border:1px solid var(--hairline-strong); border-radius:6px; font-family:inherit; font-size:13px;">
+      </div>
+      <table class="led">
+        <thead><tr><th>Customer</th><th>City</th><th>Agent</th><th>Senior</th><th class="num">Due</th><th class="num">Collected</th><th class="num">Outstanding</th><th>Status</th><th>Action Plan</th></tr></thead>
+        <tbody id="worklistBody"></tbody>
+      </table>
+      <p class="foot-note">${outstanding.length.toLocaleString()} accounts with an outstanding balance, totalling ${fmtCompact(outstanding.reduce((s,r)=>s+(r.due-r.collected),0))}.</p>
+    </div>
+  `;
+
+  function renderTable(filterText){
+    const q = (filterText||'').toLowerCase();
+    const body = document.getElementById('worklistBody');
+    const rowsHtml = outstanding
+      .filter(r => r.customer.toLowerCase().includes(q))
+      .slice(0,300)
+      .map(r=>{
+        const outstandingAmt = r.due - r.collected;
+        const isYes = r.status.toLowerCase()==='yes';
+        return `<tr>
+          <td class="name">${r.customer}</td>
+          <td>${r.city||'—'}</td>
+          <td>${r.agent||'—'}</td>
+          <td>${r.senior||'—'}</td>
+          <td class="num">${fmtCompact(r.due)}</td>
+          <td class="num">${fmtCompact(r.collected)}</td>
+          <td class="num" style="color:${COLORS.red}; font-weight:700;">${fmtCompact(outstandingAmt)}</td>
+          <td><span class="status-pill" style="background:${isYes?'#E3F6E8':'#FCE9E9'}; color:${isYes?COLORS.green:COLORS.red};">${r.status||'—'}</span></td>
+          <td>${r.actionPlan||'—'}</td>
+        </tr>`;
+      }).join('');
+    body.innerHTML = rowsHtml || '<tr><td colspan="9"><p class="empty-note">No accounts match.</p></td></tr>';
+  }
+  renderTable('');
+  document.getElementById('worklistSearch').addEventListener('input', (e)=>renderTable(e.target.value));
+}
+
+loadData();
+</script>
+</body>
+</html>
