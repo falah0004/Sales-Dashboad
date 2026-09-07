@@ -492,22 +492,60 @@ function filteredRows(f){
 
 // returns {target, actual, visits, months:[{m,target,actual}]} for a row set given period filter
 function aggregate(rows, periods){
-  let target=0, actual=0, visits=0;
+  let target=0, actual=0, visits=0, forecast=0;
   const monthly = periods.map(m => ({m, target:0, actual:0}));
   rows.forEach(r=>{
     periods.forEach((m,i)=>{
       target += r.months[m].tarValue;
       actual += r.months[m].sale;
+      forecast += r.months[m].fcValue;
       visits += r.months[m].visits;
       monthly[i].target += r.months[m].tarValue;
       monthly[i].actual += r.months[m].sale;
     });
   });
-  return {target, actual, visits, monthly};
+  return {target, actual, visits, forecast, monthly};
 }
 
 function annualForecastTotal(rows){ return rows.reduce((s,r)=>s+r.forecastValue,0); }
 function ytdActualTotal(rows){ return rows.reduce((s,r)=>s+r.actualValueYTD,0); }
+
+// Reusable semicircle gauge with a % value drawn in the center of the arc.
+function makeGauge(canvasId, actualVal, totalVal){
+  const pct = totalVal>0 ? (actualVal/totalVal*100) : 0;
+  const gaugeActual = Math.min(actualVal, totalVal);
+  const gaugeRemain = Math.max(totalVal - actualVal, 0);
+  const chart = new Chart(document.getElementById(canvasId), {
+    type:'doughnut',
+    data:{
+      labels:['Actual','Remaining'],
+      datasets:[{ data:[gaugeActual, gaugeRemain], backgroundColor:[COLORS.teal, '#E7E2D3'], borderWidth:0 }]
+    },
+    options:{
+      rotation:-90, circumference:180, cutout:'72%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{ callbacks:{ label:(ctx)=> ctx.label+': '+fmtCompact(ctx.raw) } },
+        datalabels:{ display:false }
+      }
+    },
+    plugins:[{
+      id:'gaugeCenterText_'+canvasId,
+      beforeDraw(chart){
+        const {ctx, chartArea:{left,right,bottom}} = chart;
+        ctx.save();
+        const cx = (left+right)/2;
+        const cy = bottom - 6;
+        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+        ctx.font = "700 26px "+FONT_FAMILY;
+        ctx.fillStyle = pct>=100 ? COLORS.teal : COLORS.rose;
+        ctx.fillText(fmtNum(pct,1)+'%', cx, cy);
+        ctx.restore();
+      }
+    }]
+  });
+  return {chart, pct};
+}
 
 /* ---------------- RENDER ORCHESTRATION ---------------- */
 function destroyCharts(){
@@ -551,8 +589,6 @@ function renderOverview(rows, f){
   const agg = aggregate(rows, f.periods);
   const forecastFull = annualForecastTotal(rows);
   const ytdActual = ytdActualTotal(rows);
-  const achievePct = forecastFull>0 ? (ytdActual/forecastFull*100) : 0;
-  const periodAchievePct = agg.target>0 ? (agg.actual/agg.target*100) : 0;
 
   el.innerHTML = `
     <div class="grid cols-3" style="margin-bottom:18px;">
@@ -564,16 +600,21 @@ function renderOverview(rows, f){
           <span class="num"><b>${fmtCompact(forecastFull)}</b></span> forecast
         </div>
       </div>
-      <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
-        <h3>YTD Target Achievement</h3>
-        <p class="kpi-value ${achievePct>=100?'achieve-up':'achieve-down'} num">${fmtNum(achievePct,2)}%</p>
-        <p class="kpi-label">Cumulative actual sales value ÷ full-year 2026 forecast value, across ${rows.length.toLocaleString()} SKU-customer lines.</p>
+      <div class="card">
+        <h3>FC-VALUE vs Actual <span class="sub">— selected period</span></h3>
+        <canvas id="gaugeForecastChart" height="180"></canvas>
+        <div class="kpi-sub" style="text-align:center; margin-top:-6px;">
+          <span class="num" style="font-size:15px;"><b>${fmtCompact(agg.actual)}</b></span> of
+          <span class="num"><b>${fmtCompact(agg.forecast)}</b></span> forecast
+        </div>
       </div>
-      <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
-        <h3>Selected Period</h3>
-        <p class="kpi-value num">${fmtCompact(agg.actual)}</p>
-        <p class="kpi-label">Actual sales vs <span class="num">${fmtCompact(agg.target)}</span> target
-          (<span class="${periodAchievePct>=100?'achieve-up':'achieve-down'} num">${fmtNum(periodAchievePct,1)}%</span>) · ${fmtNum(agg.visits)} visits logged</p>
+      <div class="card">
+        <h3>TAR-VALUE vs Actual <span class="sub">— selected period</span></h3>
+        <canvas id="gaugeTargetChart" height="180"></canvas>
+        <div class="kpi-sub" style="text-align:center; margin-top:-6px;">
+          <span class="num" style="font-size:15px;"><b>${fmtCompact(agg.actual)}</b></span> of
+          <span class="num"><b>${fmtCompact(agg.target)}</b></span> target · ${fmtNum(agg.visits)} visits logged
+        </div>
       </div>
     </div>
     <div class="card">
@@ -582,42 +623,9 @@ function renderOverview(rows, f){
     </div>
   `;
 
-  // Gauge (semicircle doughnut)
-  const gaugeCtx = document.getElementById('gaugeChart');
-  const gaugeActual = Math.min(ytdActual, forecastFull);
-  const gaugeRemain = Math.max(forecastFull - ytdActual, 0);
-  CHARTS.gauge = new Chart(gaugeCtx, {
-    type:'doughnut',
-    data:{
-      labels:['Actual','Remaining to forecast'],
-      datasets:[{
-        data:[gaugeActual, gaugeRemain],
-        backgroundColor:[COLORS.teal, '#E7E2D3'],
-        borderWidth:0
-      }]
-    },
-    options:{
-      rotation:-90, circumference:180, cutout:'72%',
-      plugins:{
-        legend:{display:false}, tooltip:{callbacks:{label:(ctx)=> ctx.label+': '+fmtCompact(ctx.raw)}},
-        datalabels:{ display:false }
-      }
-    },
-    plugins:[{
-      id:'gaugeCenterText',
-      beforeDraw(chart){
-        const {ctx, chartArea:{left,right,bottom}} = chart;
-        ctx.save();
-        const cx = (left+right)/2;
-        const cy = bottom - 6;
-        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
-        ctx.font = "700 26px "+FONT_FAMILY;
-        ctx.fillStyle = achievePct>=100 ? COLORS.teal : COLORS.rose;
-        ctx.fillText(fmtNum(achievePct,1)+'%', cx, cy);
-        ctx.restore();
-      }
-    }]
-  });
+  CHARTS.gauge = makeGauge('gaugeChart', ytdActual, forecastFull).chart;
+  CHARTS.gaugeForecast = makeGauge('gaugeForecastChart', agg.actual, agg.forecast).chart;
+  CHARTS.gaugeTarget = makeGauge('gaugeTargetChart', agg.actual, agg.target).chart;
 
   // Monthly trend (horizontal bar, target vs actual) + achievement % line
   const trendCtx = document.getElementById('trendChart');
