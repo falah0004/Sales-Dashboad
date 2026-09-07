@@ -279,13 +279,25 @@ const MONTH_LABEL = {JAN:'Jan',FEB:'Feb',MAR:'Mar',APR:'Apr',MAY:'May',JUN:'Jun'
 
 const COLORS = {
   teal:'#118DFF', tealSoft:'#8FC7FF', amber:'#0B3C6B', amberSoft:'#6E93B6',
-  rose:'#C4314B', ink:'#201F1E', inkSoft:'#605E5C', hairline:'#E7E9ED'
+  rose:'#C4314B', ink:'#201F1E', inkSoft:'#605E5C', hairline:'#E7E9ED',
+  green:'#1AAB40', gold:'#FFB900', red:'#E04B4B'
 };
+// Vivid categorical palette (Power BI "colorful" theme style) for multi-item single-series charts.
+const PALETTE = ['#118DFF','#12239E','#E66C37','#6B007B','#E044A7','#744EC2','#D9B300','#1AAB40','#DA3B01','#00B7C3'];
+function paletteColor(i){ return PALETTE[i % PALETTE.length]; }
+
+// Three-tier achievement coloring: red (<60%), amber (60–99%), green (100%+).
+function tierColor(pct){
+  if(pct>=100) return COLORS.green;
+  if(pct>=60) return COLORS.gold;
+  return COLORS.red;
+}
+
 const FONT_FAMILY = "'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif";
 function fmtMillions(n){ return (Number(n)/1e6).toFixed(2)+'M'; }
 
 // Datalabel configs for paired Target/Actual grouped bar charts.
-// Target bars show just their value; Actual bars show value + achievement % below it.
+// Target bars show just their value; Actual bars show value + achievement % (tier-colored) below it.
 function targetLabelCfg(){
   return {
     display:true, anchor:'end', align:'top', offset:2,
@@ -293,14 +305,21 @@ function targetLabelCfg(){
     formatter:(value)=> fmtCompact(value)
   };
 }
+function pctForActualCtx(value, ctx){
+  const targetArr = ctx.chart.data.datasets[0].data;
+  const t = targetArr[ctx.dataIndex] || 0;
+  return t>0 ? (value/t*100) : 0;
+}
 function actualLabelCfg(){
   return {
     display:true, anchor:'end', align:'top', offset:2,
-    color:COLORS.ink, font:{family:FONT_FAMILY, size:10, weight:'600'},
+    font:{family:FONT_FAMILY, size:10, weight:'700'},
+    color:(ctx)=>{
+      const pct = pctForActualCtx(ctx.dataset.data[ctx.dataIndex], ctx);
+      return [COLORS.ink, tierColor(pct)];
+    },
     formatter:(value, ctx)=>{
-      const targetArr = ctx.chart.data.datasets[0].data;
-      const t = targetArr[ctx.dataIndex] || 0;
-      const pct = t>0 ? (value/t*100) : 0;
+      const pct = pctForActualCtx(value, ctx);
       return [fmtCompact(value), '('+fmtNum(pct,0)+'%)'];
     }
   };
@@ -553,13 +572,14 @@ function ytdActualTotal(rows){ return rows.reduce((s,r)=>s+r.actualValueYTD,0); 
 // Reusable semicircle gauge with a % value drawn in the center of the arc.
 function makeGauge(canvasId, actualVal, totalVal){
   const pct = totalVal>0 ? (actualVal/totalVal*100) : 0;
+  const arcColor = tierColor(pct);
   const gaugeActual = Math.min(actualVal, totalVal);
   const gaugeRemain = Math.max(totalVal - actualVal, 0);
   const chart = new Chart(document.getElementById(canvasId), {
     type:'doughnut',
     data:{
       labels:['Actual','Remaining'],
-      datasets:[{ data:[gaugeActual, gaugeRemain], backgroundColor:[COLORS.teal, '#E7E2D3'], borderWidth:0 }]
+      datasets:[{ data:[gaugeActual, gaugeRemain], backgroundColor:[arcColor, '#EDEDED'], borderWidth:0 }]
     },
     options:{
       rotation:-90, circumference:180, cutout:'72%',
@@ -578,7 +598,7 @@ function makeGauge(canvasId, actualVal, totalVal){
         const cy = bottom - 6;
         ctx.textAlign='center'; ctx.textBaseline='alphabetic';
         ctx.font = "700 26px "+FONT_FAMILY;
-        ctx.fillStyle = pct>=100 ? COLORS.teal : COLORS.rose;
+        ctx.fillStyle = arcColor;
         ctx.fillText(fmtNum(pct,1)+'%', cx, cy);
         ctx.restore();
       }
@@ -680,12 +700,13 @@ function renderOverview(rows, f){
         {label:'Actual', data: agg.monthly.map(m=>m.actual), backgroundColor:COLORS.amber, borderRadius:2, barPercentage:0.7, yAxisID:'y', order:2},
         {
           label:'Achievement %', type:'line', data: monthlyPct, yAxisID:'yPct', order:1,
-          borderColor:COLORS.rose, backgroundColor:COLORS.rose, borderWidth:2,
-          pointRadius:4, pointBackgroundColor:COLORS.rose, pointBorderColor:'#fff', pointBorderWidth:1.5,
+          borderColor:'#B0B0B0', backgroundColor:'#B0B0B0', borderWidth:2,
+          pointRadius:5, pointBackgroundColor:monthlyPct.map(tierColor), pointBorderColor:'#fff', pointBorderWidth:1.5,
           tension:0.3,
           datalabels:{
             display:true, anchor:'end', align:'top', offset:6,
-            color:COLORS.rose, font:{family:FONT_FAMILY, size:10.5, weight:'700'},
+            color:(ctx)=> tierColor(ctx.dataset.data[ctx.dataIndex]),
+            font:{family:FONT_FAMILY, size:10.5, weight:'700'},
             formatter:(value)=> fmtNum(value,0)+'%'
           }
         }
@@ -761,8 +782,8 @@ function renderTeam(rows, f){
               <td class="num">${fmtCompact(g.actual)}</td>
               <td>
                 <div class="bar-cell">
-                  <div class="bar-track"><div class="bar-fill ${pct<60?'over':''}" style="width:${barPct}%; background:${pct>=100?COLORS.teal:(pct>=60?COLORS.amber:COLORS.rose)}"></div></div>
-                  <span class="num" style="min-width:48px; text-align:right;">${fmtNum(pct,0)}%</span>
+                  <div class="bar-track"><div class="bar-fill" style="width:${barPct}%; background:${tierColor(pct)}"></div></div>
+                  <span class="num" style="min-width:48px; text-align:right; color:${tierColor(pct)}; font-weight:600;">${fmtNum(pct,0)}%</span>
                 </div>
               </td>
               <td class="num">${fmtNum(g.visits)}</td>
@@ -860,7 +881,7 @@ function renderProducts(rows, f){
     type:'bar',
     data:{
       labels: topProducts.map(([n])=>n.length>28?n.slice(0,26)+'…':n),
-      datasets:[{ label:'Sales', data: topProducts.map(([,g])=>g.sale), backgroundColor:COLORS.teal, borderRadius:2, datalabels:endValueLabelCfg() }]
+      datasets:[{ label:'Sales', data: topProducts.map(([,g])=>g.sale), backgroundColor: topProducts.map((_,i)=>paletteColor(i)), borderRadius:2, datalabels:endValueLabelCfg() }]
     },
     options:{
       indexAxis:'y',
@@ -948,7 +969,7 @@ function renderCustomers(rows, f){
     type:'bar',
     data:{
       labels: topCustomers.map(([n])=>n.length>26?n.slice(0,24)+'…':n),
-      datasets:[{ label:'Sales', data: topCustomers.map(([,g])=>g.sale), backgroundColor:COLORS.teal, borderRadius:2, datalabels:endValueLabelCfg() }]
+      datasets:[{ label:'Sales', data: topCustomers.map(([,g])=>g.sale), backgroundColor: topCustomers.map((_,i)=>paletteColor(i)), borderRadius:2, datalabels:endValueLabelCfg() }]
     },
     options:{
       indexAxis:'y',
@@ -966,7 +987,7 @@ function renderCustomers(rows, f){
     type:'doughnut',
     data:{
       labels:['Top 15 customers','All other customers'],
-      datasets:[{ data:[topCustomers.reduce((s,[,g])=>s+g.sale,0), remainder], backgroundColor:[COLORS.teal, '#E7E2D3'], borderWidth:0,
+      datasets:[{ data:[topCustomers.reduce((s,[,g])=>s+g.sale,0), remainder], backgroundColor:['#118DFF', '#D9B300'], borderWidth:0,
         datalabels:{
           display:true, color:'#fff', font:{family:FONT_FAMILY, size:12, weight:'700'},
           formatter:(value, ctx)=>{
