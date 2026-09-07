@@ -79,6 +79,35 @@
   }
   .filter-reset:hover{ text-decoration:underline; }
 
+  /* Multi-select checkbox dropdown */
+  .ms-field{ position:relative; }
+  .ms-trigger{
+    font-family:inherit; font-size:13.5px; padding:7px 30px 7px 10px; text-align:left;
+    border:1px solid var(--hairline-strong); background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23605E5C"/></svg>') no-repeat right 10px center;
+    color:var(--ink); border-radius:6px; min-width:150px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .ms-trigger:focus, .ms-trigger.open{ outline:2px solid var(--teal); outline-offset:0; border-color:var(--teal); }
+  .ms-panel{
+    display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:50;
+    background:#fff; border:1px solid var(--hairline-strong); border-radius:8px; box-shadow:var(--shadow);
+    min-width:220px; max-width:280px; padding:8px 0;
+  }
+  .ms-panel.open{ display:block; }
+  .ms-panel-actions{
+    display:flex; gap:10px; padding:2px 12px 8px; border-bottom:1px solid var(--hairline); margin-bottom:4px;
+  }
+  .ms-panel-actions button{
+    background:none; border:none; color:var(--teal); font-size:12px; font-weight:600; cursor:pointer; padding:0; font-family:inherit;
+  }
+  .ms-panel-actions button:hover{ text-decoration:underline; }
+  .ms-options{ max-height:240px; overflow-y:auto; padding:0 4px; }
+  .ms-option{
+    display:flex; align-items:center; gap:8px; padding:6px 8px; font-size:13.5px; cursor:pointer; border-radius:6px;
+  }
+  .ms-option:hover{ background:var(--teal-soft); }
+  .ms-option input[type="checkbox"]{ accent-color:var(--teal); width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+  .ms-option label{ cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink); }
+
   /* Tabs */
   .tabs{
     display:flex; gap:4px; padding:0 clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline-strong);
@@ -171,17 +200,38 @@
     <label for="periodSelect">Period</label>
     <select id="periodSelect"></select>
   </div>
-  <div class="field">
-    <label for="seniorSelect">Senior</label>
-    <select id="seniorSelect"><option value="">All seniors</option></select>
+  <div class="field ms-field" data-key="senior">
+    <label>Senior</label>
+    <button type="button" class="ms-trigger" id="senior-trigger">All seniors</button>
+    <div class="ms-panel" id="senior-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <div class="ms-options" id="senior-options"></div>
+    </div>
   </div>
-  <div class="field">
-    <label for="spSelect">Sales Person</label>
-    <select id="spSelect"><option value="">All sales people</option></select>
+  <div class="field ms-field" data-key="sp">
+    <label>Sales Person</label>
+    <button type="button" class="ms-trigger" id="sp-trigger">All sales people</button>
+    <div class="ms-panel" id="sp-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <div class="ms-options" id="sp-options"></div>
+    </div>
   </div>
-  <div class="field">
-    <label for="brandSelect">Brand</label>
-    <select id="brandSelect"><option value="">All brands</option></select>
+  <div class="field ms-field" data-key="brand">
+    <label>Brand</label>
+    <button type="button" class="ms-trigger" id="brand-trigger">All brands</button>
+    <div class="ms-panel" id="brand-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <div class="ms-options" id="brand-options"></div>
+    </div>
   </div>
   <button class="filter-reset" id="resetBtn">Reset filters</button>
 </div>
@@ -297,23 +347,83 @@ function processRows(rows){
   if(ELAPSED_MONTHS.length===0) ELAPSED_MONTHS = ['JAN'];
 }
 
-/* ---------------- FILTERS ---------------- */
+/* ---------------- FILTERS (multi-select) ---------------- */
 function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean))].sort(); }
 
+// selection state: empty Set = "All" (no restriction)
+const MS_SELECTED = { senior: new Set(), sp: new Set(), brand: new Set() };
+const MS_LABELS = { senior: 'seniors', sp: 'sales people', brand: 'brands' };
+let MS_VALUES = { senior: [], sp: [], brand: [] };
+
 function buildFilterOptions(){
-  const seniors = uniqueSorted(RAW.map(r=>r.senior));
-  const sps = uniqueSorted(RAW.map(r=>r.sp));
-  const brands = uniqueSorted(RAW.map(r=>r.brand));
+  MS_VALUES.senior = uniqueSorted(RAW.map(r=>r.senior));
+  MS_VALUES.sp = uniqueSorted(RAW.map(r=>r.sp));
+  MS_VALUES.brand = uniqueSorted(RAW.map(r=>r.brand));
 
-  const seniorSel = document.getElementById('seniorSelect');
-  seniorSel.innerHTML = '<option value="">All seniors</option>' + seniors.map(s=>`<option value="${s}">${s}</option>`).join('');
-
-  const spSel = document.getElementById('spSelect');
-  spSel.innerHTML = '<option value="">All sales people</option>' + sps.map(s=>`<option value="${s}">${s}</option>`).join('');
-
-  const brandSel = document.getElementById('brandSelect');
-  brandSel.innerHTML = '<option value="">All brands</option>' + brands.map(s=>`<option value="${s}">${s}</option>`).join('');
+  ['senior','sp','brand'].forEach(key=>{
+    MS_SELECTED[key] = new Set(); // reset to "All" on fresh data load
+    renderMsOptions(key);
+    updateMsTrigger(key);
+  });
 }
+
+function renderMsOptions(key){
+  const container = document.getElementById(key+'-options');
+  container.innerHTML = MS_VALUES[key].map((val,i)=>{
+    const id = 'ms-'+key+'-'+i;
+    const checked = MS_SELECTED[key].has(val) ? 'checked' : '';
+    return `<div class="ms-option"><input type="checkbox" id="${id}" data-key="${key}" data-value="${val.replace(/"/g,'&quot;')}" ${checked}><label for="${id}">${val}</label></div>`;
+  }).join('') || '<div class="ms-option" style="color:var(--ink-soft);">No values found</div>';
+}
+
+function updateMsTrigger(key){
+  const sel = MS_SELECTED[key];
+  const trigger = document.getElementById(key+'-trigger');
+  if(sel.size===0){
+    trigger.textContent = 'All ' + MS_LABELS[key];
+  } else if(sel.size===1){
+    trigger.textContent = [...sel][0];
+  } else {
+    trigger.textContent = sel.size + ' selected';
+  }
+}
+
+function closeAllMsPanels(){
+  document.querySelectorAll('.ms-panel.open').forEach(p=>p.classList.remove('open'));
+  document.querySelectorAll('.ms-trigger.open').forEach(t=>t.classList.remove('open'));
+}
+
+['senior','sp','brand'].forEach(key=>{
+  document.getElementById(key+'-trigger').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const panel = document.getElementById(key+'-panel');
+    const isOpen = panel.classList.contains('open');
+    closeAllMsPanels();
+    if(!isOpen){ panel.classList.add('open'); document.getElementById(key+'-trigger').classList.add('open'); }
+  });
+
+  document.getElementById(key+'-panel').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const actionBtn = e.target.closest('button[data-action]');
+    if(actionBtn){
+      if(actionBtn.dataset.action==='all'){ MS_SELECTED[key] = new Set(MS_VALUES[key]); }
+      if(actionBtn.dataset.action==='none'){ MS_SELECTED[key] = new Set(); }
+      renderMsOptions(key);
+      updateMsTrigger(key);
+      renderAll();
+      return;
+    }
+    const checkbox = e.target.closest('input[type="checkbox"]');
+    if(checkbox){
+      const val = checkbox.dataset.value;
+      if(checkbox.checked) MS_SELECTED[key].add(val); else MS_SELECTED[key].delete(val);
+      updateMsTrigger(key);
+      renderAll();
+    }
+  });
+});
+
+document.addEventListener('click', closeAllMsPanels);
 
 function buildPeriodOptions(){
   const sel = document.getElementById('periodSelect');
@@ -325,17 +435,17 @@ function buildPeriodOptions(){
 function getFilters(){
   return {
     period: document.getElementById('periodSelect').value || 'YTD',
-    senior: document.getElementById('seniorSelect').value,
-    sp: document.getElementById('spSelect').value,
-    brand: document.getElementById('brandSelect').value
+    senior: MS_SELECTED.senior,
+    sp: MS_SELECTED.sp,
+    brand: MS_SELECTED.brand
   };
 }
 
 function filteredRows(f){
   return RAW.filter(r =>
-    (!f.senior || r.senior === f.senior) &&
-    (!f.sp || r.sp === f.sp) &&
-    (!f.brand || r.brand === f.brand)
+    (f.senior.size===0 || f.senior.has(r.senior)) &&
+    (f.sp.size===0 || f.sp.has(r.sp)) &&
+    (f.brand.size===0 || f.brand.has(r.brand))
   );
 }
 
@@ -791,14 +901,16 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
   showPage(tab.dataset.page);
 });
 
-['periodSelect','seniorSelect','spSelect','brandSelect'].forEach(id=>{
+['periodSelect'].forEach(id=>{
   document.getElementById(id).addEventListener('change', renderAll);
 });
 
 document.getElementById('resetBtn').addEventListener('click', ()=>{
-  document.getElementById('seniorSelect').value='';
-  document.getElementById('spSelect').value='';
-  document.getElementById('brandSelect').value='';
+  ['senior','sp','brand'].forEach(key=>{
+    MS_SELECTED[key] = new Set();
+    renderMsOptions(key);
+    updateMsTrigger(key);
+  });
   renderAll();
 });
 
