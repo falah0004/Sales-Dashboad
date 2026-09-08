@@ -811,7 +811,7 @@ function renderTeam(rows, f){
       <h3>Leaderboard</h3>
       <table class="led">
         <thead><tr>
-          <th>Sales Person</th><th class="num">Target</th><th class="num">Actual</th><th>Achievement</th><th class="num">Visits</th>
+          <th>Sales Person</th><th class="num">Target</th><th class="num">Actual</th><th>Achievement</th>
         </tr></thead>
         <tbody>
           ${spEntries.map(([name,g])=>{
@@ -827,7 +827,6 @@ function renderTeam(rows, f){
                   <span class="num" style="min-width:48px; text-align:right; color:${tierColor(pct)}; font-weight:600;">${fmtNum(pct,0)}%</span>
                 </div>
               </td>
-              <td class="num">${fmtNum(g.visits)}</td>
             </tr>`;
           }).join('')}
         </tbody>
