@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Promoter Summary Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --paper:#F7F9FC;
+    --paper-raised:#FFFFFF;
+    --ink:#201F1E;
+    --ink-soft:#605E5C;
+    --teal:#118DFF;
+    --teal-soft:#8FC7FF;
+    --amber:#0B3C6B;
+    --hairline:#E7E9ED;
+    --hairline-strong:#D2D6DC;
+    --green:#1AAB40;
+    --gold:#FFB900;
+    --red:#E04B4B;
+    --shadow: 0 1px 2px rgba(16,30,54,.06), 0 4px 14px rgba(16,30,54,.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums;}
+
+  .masthead{
+    border-bottom:1px solid var(--hairline);
+    padding:22px clamp(16px,4vw,48px) 16px;
+    display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap;
+    background:var(--paper-raised);
+  }
+  .masthead .kicker{ font-size:11.5px; letter-spacing:.06em; color:var(--teal); margin:0 0 4px; font-weight:600; }
+  .masthead h1{ font-weight:600; font-size:clamp(20px,2.6vw,26px); margin:0; line-height:1.15; letter-spacing:-0.01em; color:var(--ink); }
+  .masthead .meta{ font-size:12.5px; color:var(--ink-soft); text-align:right; line-height:1.6; }
+  .masthead .meta button{
+    background:var(--teal); border:1px solid var(--teal); color:#fff;
+    font-family:inherit; font-size:12.5px; font-weight:600; padding:7px 14px; cursor:pointer;
+    border-radius:6px; margin-left:8px;
+  }
+  .masthead .meta button:hover{ background:#0d78dc; }
+
+  main{ padding:22px clamp(16px,4vw,48px) 60px; max-width:1200px; margin:0 auto; }
+
+  .grid{ display:grid; gap:16px; }
+  .grid.cols-3{ grid-template-columns:repeat(3,1fr); }
+  .grid.cols-2{ grid-template-columns:repeat(2,1fr); }
+  @media(max-width:900px){ .grid.cols-3,.grid.cols-2{ grid-template-columns:1fr; } }
+
+  .card{ background:var(--paper-raised); border:1px solid var(--hairline); border-radius:10px; padding:20px 22px; box-shadow:var(--shadow); margin-bottom:18px; }
+  .card h3{ font-size:13px; color:var(--ink); margin:0 0 16px; font-weight:600; }
+  .card h3 span.sub{ color:var(--ink-soft); font-weight:400; }
+
+  .kpi-value{ font-weight:700; font-size:38px; line-height:1; margin:0 0 6px; color:var(--ink); }
+  .kpi-label{ font-size:12.5px; color:var(--ink-soft); }
+  .kpi-sub{ font-size:12.5px; margin-top:10px; color:var(--ink-soft); }
+  .kpi-sub b{ color:var(--ink); font-weight:700; }
+
+  table.led{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.led th{ text-align:left; font-size:11px; letter-spacing:.03em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; padding:9px 10px; border-bottom:2px solid var(--hairline-strong); }
+  table.led td{ padding:9px 10px; border-bottom:1px solid var(--hairline); }
+  table.led td.name{ font-weight:700; }
+  table.led tr:hover td{ background:#E9F3FE; }
+  table.led td.num, table.led th.num{ text-align:right; }
+  .bar-cell{ display:flex; align-items:center; gap:8px; }
+  .bar-track{ flex:1; height:6px; background:var(--hairline); border-radius:3px; overflow:hidden; min-width:60px; }
+  .bar-fill{ height:100%; border-radius:3px; }
+  .pace-pill{ display:inline-block; padding:2px 9px; border-radius:10px; font-size:11.5px; font-weight:700; }
+
+  .legend-row{ display:flex; gap:18px; margin-bottom:14px; flex-wrap:wrap; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); font-weight:500; }
+  .legend-dot{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+  .empty-note{ font-size:13px; color:var(--ink-soft); padding:30px 0; text-align:center; }
+  .loading{ padding:80px 20px; text-align:center; color:var(--ink-soft); font-weight:500; }
+  .error-box{ margin:26px clamp(16px,4vw,48px); padding:18px 20px; border:1px solid var(--red); background:#FCEBEE; color:var(--red); font-size:13.5px; border-radius:8px; line-height:1.6; }
+  .foot-note{ font-size:11.5px; color:var(--ink-soft); margin-top:8px; }
+  ::-webkit-scrollbar{ height:8px; width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--hairline-strong); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div>
+    <p class="kicker">DERMA HEALTH COSMETICS · UAE</p>
+    <h1>Promoter Summary Dashboard</h1>
+  </div>
+  <div class="meta">
+    <div id="lastUpdated">Not loaded yet</div>
+    <div><button id="refreshBtn">↻ Refresh data</button></div>
+  </div>
+</div>
+
+<main id="main">
+  <div class="loading">Loading promoter data from Google Sheets…</div>
+</main>
+
+<script>
+/* ---------------- CONFIG ---------------- */
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRNgXzKKEFqkFL3bOfr-0_Fx69XZow1nHQWEiKYk-BpBUQvsD5YQLQqFLrBoONYTw/pub?gid=563197384&single=true&output=csv";
+
+const COLORS = { teal:'#118DFF', tealSoft:'#8FC7FF', amber:'#0B3C6B', ink:'#201F1E', inkSoft:'#605E5C', hairline:'#E7E9ED', green:'#1AAB40', gold:'#FFB900', red:'#E04B4B' };
+const PALETTE = ['#118DFF','#12239E','#E66C37','#6B007B','#E044A7','#744EC2','#D9B300','#1AAB40','#DA3B01','#00B7C3'];
+function paletteColor(i){ return PALETTE[i % PALETTE.length]; }
+// Pace tiering: compares Achieved % against Expected % (pro-rated pace), not a fixed threshold.
+function paceColor(achievedPct, expectedPct){
+  const diff = achievedPct - expectedPct;
+  if(diff >= 0) return COLORS.green;
+  if(diff >= -15) return COLORS.gold;
+  return COLORS.red;
+}
+const FONT_FAMILY = "'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif";
+
+if(typeof ChartDataLabels !== 'undefined'){
+  Chart.register(ChartDataLabels);
+  Chart.defaults.set('plugins.datalabels', { display:false });
+}
+
+let RAW = [];
+let CHARTS = {};
+
+function fmtNum(n, decimals=0){ if(n===null||n===undefined||isNaN(n)) return '0'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:decimals,maximumFractionDigits:decimals}); }
+function fmtCompact(n){ if(n===null||n===undefined||isNaN(n)) return '0'; const abs=Math.abs(n); if(abs>=1e6) return (n/1e6).toFixed(2)+'M'; if(abs>=1e3) return (n/1e3).toFixed(1)+'K'; return fmtNum(n); }
+function num(v){ if(v===null||v===undefined||v==='') return 0; const n = typeof v==='number'?v:parseFloat(String(v).replace(/,/g,'').trim()); return isNaN(n)?0:n; }
+function pct(v){ if(v===null||v===undefined||v==='') return 0; const n = parseFloat(String(v).replace(/%/g,'').trim()); return isNaN(n)?0:n; }
+
+function loadData(){
+  document.getElementById('main').innerHTML = '<div class="loading">Loading promoter data from Google Sheets…</div>';
+  Papa.parse(CSV_URL, {
+    download:true, header:true, skipEmptyLines:true,
+    complete: function(results){
+      try{
+        processRows(results.data);
+        document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});
+        renderAll();
+      }catch(e){
+        showError('The sheet loaded but could not be read. Details: ' + e.message);
+        console.error(e);
+      }
+    },
+    error: function(err){
+      showError('Could not load the published CSV. Make sure the Promoter Summary tab is still published individually (File → Share → Publish to web) and that the link is unchanged. Technical detail: ' + err);
+    }
+  });
+}
+
+function showError(msg){
+  document.getElementById('main').innerHTML = '<div class="error-box"><strong>Could not load data.</strong><br>' + msg + '</div>';
+}
+
+function processRows(rows){
+  let monthDays = null, totalDays = null;
+  RAW = rows.map(r => {
+    if(monthDays===null && r['Month Days']!=='' && r['Month Days']!==undefined) monthDays = num(r['Month Days']);
+    if(totalDays===null && r['No. of days ']!=='' && r['No. of days ']!==undefined) totalDays = num(r['No. of days ']);
+    return {
+      promoter: (r['Promoter ']||r['Promoter']||'').trim(),
+      target: num(r['Target']),
+      achieved: num(r['Achieved']),
+      expected: num(r['Expected']),
+      achievedPct: pct(r['Achieved %']),
+      expectedPct: pct(r['Expected %'])
+    };
+  }).filter(r => r.promoter);
+  RAW.monthDays = monthDays;
+  RAW.totalDays = totalDays;
+}
+
+/* ---------------- RENDER ---------------- */
+function destroyCharts(){ Object.values(CHARTS).forEach(c=>c&&c.destroy()); CHARTS={}; }
+
+function renderAll(){
+  destroyCharts();
+  const el = document.getElementById('main');
+  const rows = RAW;
+  if(!rows.length){
+    el.innerHTML = '<div class="empty-note">No promoter rows found.</div>';
+    return;
+  }
+
+  const totalTarget = rows.reduce((s,r)=>s+r.target,0);
+  const totalAchieved = rows.reduce((s,r)=>s+r.achieved,0);
+  const totalExpected = rows.reduce((s,r)=>s+r.expected,0);
+  const overallAchievedPct = totalTarget>0 ? (totalAchieved/totalTarget*100) : 0;
+  const overallExpectedPct = totalTarget>0 ? (totalExpected/totalTarget*100) : 0;
+  const arcColor = paceColor(overallAchievedPct, overallExpectedPct);
+  const sorted = [...rows].sort((a,b)=>b.achievedPct-a.achievedPct);
+  const dayLabel = (rows.monthDays!=null && rows.totalDays!=null) ? `Day ${fmtNum(rows.monthDays)} of ${fmtNum(rows.totalDays)}` : '';
+
+  el.innerHTML = `
+    <div class="grid cols-3">
+      <div class="card">
+        <h3>Achieved vs Target <span class="sub">${dayLabel ? '— '+dayLabel : ''}</span></h3>
+        <canvas id="gaugeChart" height="180"></canvas>
+        <div class="kpi-sub" style="text-align:center; margin-top:-6px;">
+          <span class="num" style="font-size:15px;"><b>${fmtCompact(totalAchieved)}</b></span> of
+          <span class="num"><b>${fmtCompact(totalTarget)}</b></span> target
+        </div>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
+        <h3>Overall Pace</h3>
+        <p class="kpi-value num" style="color:${arcColor};">${fmtNum(overallAchievedPct,0)}%</p>
+        <p class="kpi-label">Achieved vs the <b class="num">${fmtNum(overallExpectedPct,0)}%</b> expected pace for this point in the month.</p>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
+        <h3>Expected So Far</h3>
+        <p class="kpi-value num">${fmtCompact(totalExpected)}</p>
+        <p class="kpi-label">Pro-rated target for days elapsed, across ${rows.length} promoters.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Target vs Achieved vs Expected — by Promoter</h3>
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.tealSoft}"></span>Target</span>
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Achieved</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#9AA5B1"></span>Expected pace</span>
+      </div>
+      <canvas id="promoterChart" height="90"></canvas>
+    </div>
+    <div class="card">
+      <h3>Promoter Leaderboard <span class="sub">— sorted by achievement %</span></h3>
+      <table class="led">
+        <thead><tr>
+          <th>Promoter</th><th class="num">Target</th><th class="num">Achieved</th><th class="num">Expected</th><th>Achieved %</th><th>Vs Pace</th>
+        </tr></thead>
+        <tbody>
+          ${sorted.map(r=>{
+            const barPct = Math.min(r.achievedPct,100);
+            const color = paceColor(r.achievedPct, r.expectedPct);
+            const diff = r.achievedPct - r.expectedPct;
+            const diffLabel = diff>=0 ? ('+'+fmtNum(diff,0)+'%') : (fmtNum(diff,0)+'%');
+            const paceText = diff>=0 ? 'Ahead' : (diff>=-15 ? 'Slightly behind' : 'Behind');
+            return `<tr>
+              <td class="name">${r.promoter}</td>
+              <td class="num">${fmtCompact(r.target)}</td>
+              <td class="num">${fmtCompact(r.achieved)}</td>
+              <td class="num">${fmtCompact(r.expected)}</td>
+              <td>
+                <div class="bar-cell">
+                  <div class="bar-track"><div class="bar-fill" style="width:${barPct}%; background:${color}"></div></div>
+                  <span class="num" style="min-width:44px; text-align:right; color:${color}; font-weight:700;">${fmtNum(r.achievedPct,0)}%</span>
+                </div>
+              </td>
+              <td><span class="pace-pill" style="background:${color}22; color:${color};">${paceText} (${diffLabel})</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <p class="foot-note">"Vs Pace" compares each promoter's Achieved % against their own Expected % for the days elapsed this month — a fairer read than achievement % alone early in the month.</p>
+    </div>
+  `;
+
+  const gaugeActual = Math.min(totalAchieved, totalTarget);
+  const gaugeRemain = Math.max(totalTarget-totalAchieved, 0);
+  CHARTS.gauge = new Chart(document.getElementById('gaugeChart'), {
+    type:'doughnut',
+    data:{ labels:['Achieved','Remaining'], datasets:[{ data:[gaugeActual, gaugeRemain], backgroundColor:[arcColor,'#EDEDED'], borderWidth:0 }] },
+    options:{ rotation:-90, circumference:180, cutout:'72%', plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>ctx.label+': '+fmtCompact(ctx.raw)}}, datalabels:{display:false} } },
+    plugins:[{
+      id:'gaugeCenterText',
+      beforeDraw(chart){
+        const {ctx, chartArea:{left,right,bottom}} = chart;
+        ctx.save(); const cx=(left+right)/2, cy=bottom-6;
+        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+        ctx.font = "700 26px "+FONT_FAMILY; ctx.fillStyle = arcColor;
+        ctx.fillText(fmtNum(overallAchievedPct,1)+'%', cx, cy);
+        ctx.restore();
+      }
+    }]
+  });
+
+  CHARTS.promoter = new Chart(document.getElementById('promoterChart'), {
+    type:'bar',
+    data:{
+      labels: sorted.map(r=>r.promoter),
+      datasets:[
+        {label:'Target', data:sorted.map(r=>r.target), backgroundColor:COLORS.tealSoft, borderRadius:2},
+        {label:'Achieved', data:sorted.map(r=>r.achieved), backgroundColor:COLORS.amber, borderRadius:2},
+        {label:'Expected pace', data:sorted.map(r=>r.expected), backgroundColor:'#9AA5B1', borderRadius:2}
+      ]
+    },
+    options:{ plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11,weight:'600'}, color:COLORS.ink, maxRotation:30, minRotation:30}},
+      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+loadData();
+</script>
+</body>
+</html>
