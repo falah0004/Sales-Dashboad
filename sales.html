@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Item Forecast vs Sales — Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --paper:#F7F9FC;
+    --paper-raised:#FFFFFF;
+    --ink:#201F1E;
+    --ink-soft:#605E5C;
+    --teal:#118DFF;
+    --teal-soft:#D7EBFF;
+    --amber:#0B3C6B;
+    --amber-soft:#CBDCEB;
+    --rose:#C4314B;
+    --hairline:#E7E9ED;
+    --hairline-strong:#D2D6DC;
+    --shadow: 0 1px 2px rgba(16,30,54,.06), 0 4px 14px rgba(16,30,54,.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums;}
+  .serif{ font-weight:700; }
+
+  /* Masthead */
+  .masthead{
+    border-bottom:1px solid var(--hairline);
+    padding:22px clamp(16px,4vw,48px) 16px;
+    display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap;
+    background:var(--paper-raised);
+  }
+  .masthead .kicker{
+    font-size:11.5px; letter-spacing:.06em; color:var(--teal); margin:0 0 4px; font-weight:600;
+  }
+  .masthead h1{
+    font-weight:600; font-size:clamp(20px,2.6vw,26px);
+    margin:0; line-height:1.15; letter-spacing:-0.01em; color:var(--ink);
+  }
+  .masthead .meta{
+    font-size:12.5px; color:var(--ink-soft); text-align:right; line-height:1.6;
+  }
+  .masthead .meta button{
+    background:var(--teal); border:1px solid var(--teal); color:#fff;
+    font-family:inherit; font-size:12.5px; font-weight:600; padding:7px 14px; cursor:pointer;
+    border-radius:6px; margin-left:8px;
+  }
+  .masthead .meta button:hover{ background:#0d78dc; }
+
+  /* Filter bar */
+  .filterbar{
+    display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end;
+    padding:14px clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline);
+    background:var(--paper-raised);
+  }
+  .field{ display:flex; flex-direction:column; gap:5px; min-width:150px; }
+  .field label{
+    font-size:11px; letter-spacing:.03em; text-transform:uppercase; color:var(--ink-soft); font-weight:600;
+  }
+  .field select, .field input[type="text"]{
+    font-family:inherit; font-size:13.5px; padding:7px 10px;
+    border:1px solid var(--hairline-strong); background:#fff; color:var(--ink); border-radius:6px;
+    min-width:150px;
+  }
+  .field select:focus, .field input:focus{ outline:2px solid var(--teal); outline-offset:0; border-color:var(--teal); }
+  .filter-reset{
+    align-self:flex-end; background:none; border:none; color:var(--teal); font-size:12.5px; font-weight:600;
+    cursor:pointer; padding:8px 0; font-family:inherit;
+  }
+  .filter-reset:hover{ text-decoration:underline; }
+
+  /* Multi-select checkbox dropdown */
+  .ms-field{ position:relative; }
+  .ms-trigger{
+    font-family:inherit; font-size:13.5px; padding:7px 30px 7px 10px; text-align:left;
+    border:1px solid var(--hairline-strong); background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23605E5C"/></svg>') no-repeat right 10px center;
+    color:var(--ink); border-radius:6px; min-width:150px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .ms-trigger:focus, .ms-trigger.open{ outline:2px solid var(--teal); outline-offset:0; border-color:var(--teal); }
+  .ms-panel{
+    display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:50;
+    background:#fff; border:1px solid var(--hairline-strong); border-radius:8px; box-shadow:var(--shadow);
+    min-width:220px; max-width:280px; padding:8px 0;
+  }
+  .ms-panel.open{ display:block; }
+  .ms-panel-actions{
+    display:flex; gap:10px; padding:2px 12px 8px; border-bottom:1px solid var(--hairline); margin-bottom:4px;
+  }
+  .ms-panel-actions button{
+    background:none; border:none; color:var(--teal); font-size:12px; font-weight:600; cursor:pointer; padding:0; font-family:inherit;
+  }
+  .ms-panel-actions button:hover{ text-decoration:underline; }
+  .ms-search{
+    display:block; width:calc(100% - 24px); margin:0 12px 8px; padding:6px 8px;
+    border:1px solid var(--hairline-strong); border-radius:6px; font-family:inherit; font-size:12.5px;
+  }
+  .ms-search:focus{ outline:2px solid var(--teal); outline-offset:0; border-color:var(--teal); }
+  .ms-options{ max-height:240px; overflow-y:auto; padding:0 4px; }
+  .ms-option{
+    display:flex; align-items:center; gap:8px; padding:6px 8px; font-size:13.5px; cursor:pointer; border-radius:6px;
+  }
+  .ms-option:hover{ background:var(--teal-soft); }
+  .ms-option input[type="checkbox"]{ accent-color:var(--teal); width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+  .ms-option label{ cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink); }
+
+  /* Tabs */
+  .tabs{
+    display:flex; gap:4px; padding:0 clamp(16px,4vw,48px); border-bottom:1px solid var(--hairline-strong);
+    background:var(--paper-raised); overflow-x:auto;
+  }
+  .tab{
+    font-size:13.5px; font-weight:600; letter-spacing:0;
+    padding:13px 16px; cursor:pointer; color:var(--ink-soft); border-bottom:3px solid transparent;
+    white-space:nowrap; user-select:none;
+  }
+  .tab.active{ color:var(--teal); border-bottom-color:var(--teal); }
+  .tab:hover:not(.active){ color:var(--ink); }
+
+  main{ padding:22px clamp(16px,4vw,48px) 60px; max-width:1400px; margin:0 auto; }
+  .canvas-page{ display:none; }
+  .canvas-page.active{ display:block; animation:fadein .25s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+  .grid{ display:grid; gap:16px; }
+  .grid.cols-3{ grid-template-columns:repeat(3,1fr); }
+  .grid.cols-2{ grid-template-columns:repeat(2,1fr); }
+  @media(max-width:900px){ .grid.cols-3,.grid.cols-2{ grid-template-columns:1fr; } }
+
+  .card{
+    background:var(--paper-raised); border:1px solid var(--hairline); border-radius:10px;
+    padding:20px 22px; box-shadow:var(--shadow);
+  }
+  .card h3{
+    font-size:13px; letter-spacing:0; text-transform:none; color:var(--ink); margin:0 0 16px; font-weight:600;
+  }
+  .card h3 span.sub{ text-transform:none; letter-spacing:0; color:var(--ink-soft); font-weight:400; }
+
+  .kpi-value{ font-weight:700; font-size:38px; line-height:1; margin:0 0 6px; color:var(--ink); }
+  .kpi-label{ font-size:12.5px; color:var(--ink-soft); }
+  .kpi-sub{ font-size:12.5px; margin-top:10px; color:var(--ink-soft); }
+  .kpi-sub b{ color:var(--ink); font-weight:700; }
+
+  .achieve-up{ color:var(--teal); }
+  .achieve-down{ color:var(--rose); }
+
+  table.led{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.led th{
+    text-align:left; font-size:11px; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--ink-soft); font-weight:600; padding:9px 10px;
+    border-bottom:2px solid var(--hairline-strong);
+  }
+  table.led td{ padding:9px 10px; border-bottom:1px solid var(--hairline); }
+  table.led td.name{ font-weight:700; }
+  table.led tr:hover td{ background:var(--teal-soft); }
+  table.led td.num, table.led th.num{ text-align:right; }
+  .bar-cell{ display:flex; align-items:center; gap:8px; }
+  .bar-track{ flex:1; height:6px; background:var(--hairline); border-radius:3px; overflow:hidden; min-width:60px; }
+  .bar-fill{ height:100%; background:var(--teal); border-radius:3px; }
+  .bar-fill.over{ background:var(--rose); }
+
+  .legend-row{ display:flex; gap:18px; margin-bottom:14px; flex-wrap:wrap; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); font-weight:500; }
+  .legend-dot{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+  .empty-note{ font-size:13px; color:var(--ink-soft); padding:30px 0; text-align:center; }
+  .loading{ padding:80px 20px; text-align:center; color:var(--ink-soft); font-weight:500; }
+  .error-box{
+    margin:26px clamp(16px,4vw,48px); padding:18px 20px; border:1px solid var(--rose);
+    background:#FCEBEE; color:var(--rose); font-size:13.5px; border-radius:8px; line-height:1.6;
+  }
+  .error-box code{ font-family:'Consolas','Courier New',monospace; background:#fff; padding:1px 5px; border-radius:4px; }
+
+  .search-wrap{ margin-bottom:14px; }
+  .foot-note{ font-size:11.5px; color:var(--ink-soft); margin-top:8px; }
+
+  ::-webkit-scrollbar{ height:8px; width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--hairline-strong); border-radius:4px; }
+</style>
+</head>
+<body>
+<div id="accessGate" style="position:fixed; inset:0; z-index:1000; background:#F7F9FC; display:flex; align-items:center; justify-content:center; font-family:'Segoe UI',-apple-system,'Helvetica Neue',Arial,sans-serif;">
+  <div style="background:#fff; border:1px solid #E7E9ED; border-radius:12px; box-shadow:0 4px 24px rgba(16,30,54,.1); padding:40px 36px; width:100%; max-width:360px; text-align:center;">
+    <div style="width:44px; height:44px; margin:0 auto 16px; border-radius:10px; background:#118DFF; display:flex; align-items:center; justify-content:center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </div>
+    <h2 style="font-size:17px; font-weight:600; color:#201F1E; margin:0 0 6px;">Sales Dashboard</h2>
+    <p style="font-size:13px; color:#605E5C; margin:0 0 20px;">Enter the access code to continue</p>
+    <input type="password" id="gateInput" placeholder="Access code" style="width:100%; padding:10px 12px; border:1px solid #D2D6DC; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; margin-bottom:10px;">
+    <button id="gateSubmit" style="width:100%; padding:10px 12px; border:none; border-radius:8px; background:#118DFF; color:#fff; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer;">Unlock</button>
+    <p id="gateError" style="font-size:12.5px; color:#E04B4B; margin:12px 0 0; display:none;">Incorrect code — please try again.</p>
+  </div>
+</div>
+<div id="dashboardContent" style="display:none;">
+
+<div class="masthead">
+  <div>
+    <p class="kicker">DERMA HEALTH COSMETICS · UAE</p>
+    <h1>Item Forecast vs Sales Dashboard</h1>
+  </div>
+  <div class="meta">
+    <div id="lastUpdated">Not loaded yet</div>
+    <div><button id="refreshBtn">↻ Refresh data</button></div>
+  </div>
+</div>
+
+<div class="filterbar">
+  <div class="field ms-field" data-key="period">
+    <label>Period</label>
+    <button type="button" class="ms-trigger" id="period-trigger">Year to date</button>
+    <div class="ms-panel" id="period-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear (YTD)</button>
+      </div>
+      <div class="ms-options" id="period-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="senior">
+    <label>Senior</label>
+    <button type="button" class="ms-trigger" id="senior-trigger">All seniors</button>
+    <div class="ms-panel" id="senior-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <div class="ms-options" id="senior-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="sp">
+    <label>Sales Person</label>
+    <button type="button" class="ms-trigger" id="sp-trigger">All sales people</button>
+    <div class="ms-panel" id="sp-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <div class="ms-options" id="sp-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="brand">
+    <label>Brand</label>
+    <button type="button" class="ms-trigger" id="brand-trigger">All brands</button>
+    <div class="ms-panel" id="brand-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <div class="ms-options" id="brand-options"></div>
+    </div>
+  </div>
+  <div class="field ms-field" data-key="product">
+    <label>Product</label>
+    <button type="button" class="ms-trigger" id="product-trigger">All products</button>
+    <div class="ms-panel" id="product-panel">
+      <div class="ms-panel-actions">
+        <button type="button" data-action="all">Select all</button>
+        <button type="button" data-action="none">Clear</button>
+      </div>
+      <input type="text" class="ms-search" id="product-search" placeholder="Search products…">
+      <div class="ms-options" id="product-options"></div>
+    </div>
+  </div>
+  <button class="filter-reset" id="resetBtn">Reset filters</button>
+</div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-page="overview">01 · Overview</div>
+  <div class="tab" data-page="team">02 · Team Performance</div>
+  <div class="tab" data-page="products">03 · Products &amp; Brands</div>
+  <div class="tab" data-page="customers">04 · Customers</div>
+</div>
+
+<main id="main">
+  <div class="loading" id="loadingState">Loading ledger data from Google Sheets…</div>
+</main>
+
+<script>
+/* ---------------- CONFIG ---------------- */
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRNgXzKKEFqkFL3bOfr-0_Fx69XZow1nHQWEiKYk-BpBUQvsD5YQLQqFLrBoONYTw/pub?gid=334506300&single=true&output=csv";
+const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+const MONTH_LABEL = {JAN:'Jan',FEB:'Feb',MAR:'Mar',APR:'Apr',MAY:'May',JUN:'Jun',JUL:'Jul',AUG:'Aug',SEP:'Sep',OCT:'Oct',NOV:'Nov',DEC:'Dec'};
+
+const COLORS = {
+  teal:'#118DFF', tealSoft:'#8FC7FF', amber:'#0B3C6B', amberSoft:'#6E93B6',
+  rose:'#C4314B', ink:'#201F1E', inkSoft:'#605E5C', hairline:'#E7E9ED',
+  green:'#1AAB40', gold:'#FFB900', red:'#E04B4B'
+};
+// Vivid categorical palette (Power BI "colorful" theme style) for multi-item single-series charts.
+const PALETTE = ['#118DFF','#12239E','#E66C37','#6B007B','#E044A7','#744EC2','#D9B300','#1AAB40','#DA3B01','#00B7C3'];
+function paletteColor(i){ return PALETTE[i % PALETTE.length]; }
+
+// Three-tier achievement coloring: red (<60%), amber (60–99%), green (100%+).
+function tierColor(pct){
+  if(pct>=100) return COLORS.green;
+  if(pct>=60) return COLORS.gold;
+  return COLORS.red;
+}
+
+const FONT_FAMILY = "'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif";
+function fmtMillions(n){ return (Number(n)/1e6).toFixed(2)+'M'; }
+
+// Datalabel configs for paired Target/Actual grouped bar charts.
+// Target bars show just their value; Actual bars show value + achievement % (tier-colored) below it.
+function targetLabelCfg(){
+  return {
+    display:true, anchor:'end', align:'top', offset:2,
+    color:COLORS.ink, font:{family:FONT_FAMILY, size:10, weight:'600'},
+    formatter:(value)=> fmtCompact(value)
+  };
+}
+function pctForActualCtx(value, ctx){
+  const targetArr = ctx.chart.data.datasets[0].data;
+  const t = targetArr[ctx.dataIndex] || 0;
+  return t>0 ? (value/t*100) : 0;
+}
+function actualLabelCfg(){
+  return {
+    display:true, anchor:'end', align:'top', offset:2,
+    color:COLORS.ink, font:{family:FONT_FAMILY, size:10, weight:'700'},
+    formatter:(value, ctx)=>{
+      const pct = pctForActualCtx(value, ctx);
+      return [fmtCompact(value), '('+fmtNum(pct,0)+'%)'];
+    }
+  };
+}
+// Datalabel config for single-series horizontal bars (product/customer lists).
+function endValueLabelCfg(){
+  return {
+    display:true, anchor:'end', align:'end', offset:4,
+    color:COLORS.ink, font:{family:FONT_FAMILY, size:10.5, weight:'600'},
+    formatter:(value)=> fmtCompact(value)
+  };
+}
+if(typeof ChartDataLabels !== 'undefined'){
+  Chart.register(ChartDataLabels);
+  Chart.defaults.set('plugins.datalabels', { display:false });
+}
+
+let RAW = [];          // parsed rows
+let ELAPSED_MONTHS = []; // months with actual data present
+let CHARTS = {};       // active chart instances, keyed by canvas id, for cleanup
+
+/* ---------------- LOAD ---------------- */
+function fmtNum(n, decimals=0){
+  if(n===null||n===undefined||isNaN(n)) return '0';
+  return Number(n).toLocaleString('en-US',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+}
+function fmtCompact(n){
+  if(n===null||n===undefined||isNaN(n)) return '0';
+  const abs = Math.abs(n);
+  if(abs>=1e6) return (n/1e6).toFixed(2)+'M';
+  if(abs>=1e3) return (n/1e3).toFixed(1)+'K';
+  return fmtNum(n);
+}
+function num(v){
+  if(v===null||v===undefined||v==='') return 0;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g,''));
+  return isNaN(n) ? 0 : n;
+}
+
+function loadData(){
+  document.getElementById('loadingState') && (document.getElementById('main').innerHTML = '<div class="loading">Loading ledger data from Google Sheets…</div>');
+  Papa.parse(CSV_URL, {
+    download:true,
+    header:true,
+    skipEmptyLines:true,
+    complete: function(results){
+      try{
+        processRows(results.data);
+        document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});
+        buildFilterOptions();
+        renderAll();
+      }catch(e){
+        showError('The sheet loaded but could not be read. Details: ' + e.message);
+        console.error(e);
+      }
+    },
+    error: function(err){
+      showError('Could not load the published CSV. Make sure the sheet tab is still published (File → Share → Publish to web) and that the link is unchanged. Technical detail: ' + err);
+    }
+  });
+}
+
+function showError(msg){
+  document.getElementById('main').innerHTML =
+    '<div class="error-box"><strong>Could not load data.</strong><br>' + msg + '</div>';
+}
+
+function processRows(rows){
+  RAW = rows.map(r => {
+    const rec = {
+      sp: (r['SALES PERSON']||'').trim(),
+      senior: (r['SENIOR']||'').trim(),
+      customer: (r['CUSTOMER']||'').trim(),
+      country: (r['COUNTRY']||'').trim(),
+      custClass: (r['CUSTOMER CLASS']||'').trim(),
+      brand: (r['BRAND']||'').trim(),
+      product: (r['PRODUCT']||'').trim(),
+      productClass: (r['PRODUCT CLASS']||'').trim(),
+      forecastValue: num(r['2026 FORECAST VALUE']),
+      actualValueYTD: num(r['ACTUAL VALUE']),
+      months: {}
+    };
+    MONTHS.forEach(m => {
+      rec.months[m] = {
+        tarValue: num(r[m+'-TAR-VALUE']),
+        fcValue: num(r[m+'-FC-VALUE']),
+        actualQty: num(r[m+'-ACTUAL-QTY']),
+        sale: num(r[m+'-SALE']),
+        visits: num(r[m+'-VISITS'])
+      };
+    });
+    return rec;
+  }).filter(r => r.sp || r.customer || r.product);
+
+  // determine elapsed months = months where total sale > 0 across dataset
+  ELAPSED_MONTHS = MONTHS.filter(m => RAW.reduce((s,r)=>s+r.months[m].sale,0) > 0);
+  if(ELAPSED_MONTHS.length===0) ELAPSED_MONTHS = ['JAN'];
+}
+
+/* ---------------- FILTERS (multi-select) ---------------- */
+function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean))].sort(); }
+
+// selection state: empty Set = "All" (no restriction)
+const MS_SELECTED = { period: new Set(), senior: new Set(), sp: new Set(), brand: new Set(), product: new Set() };
+const MS_LABELS = { period: 'months', senior: 'seniors', sp: 'sales people', brand: 'brands', product: 'products' };
+let MS_VALUES = { period: [], senior: [], sp: [], brand: [], product: [] };
+const MS_SEARCH = { product: '' };
+
+function msDisplay(key, val){
+  return key==='period' ? (MONTH_LABEL[val]||val) : val;
+}
+
+function resolvedPeriods(){
+  const sel = MS_SELECTED.period;
+  return sel.size===0 ? ELAPSED_MONTHS.slice() : ELAPSED_MONTHS.filter(m=>sel.has(m));
+}
+
+function visibleMsValues(key){
+  const q = (MS_SEARCH[key]||'').trim().toLowerCase();
+  if(!q) return MS_VALUES[key];
+  return MS_VALUES[key].filter(v=>v.toLowerCase().includes(q));
+}
+
+function buildFilterOptions(){
+  MS_VALUES.period = ELAPSED_MONTHS.slice();
+  MS_VALUES.senior = uniqueSorted(RAW.map(r=>r.senior));
+  MS_VALUES.sp = uniqueSorted(RAW.map(r=>r.sp));
+  MS_VALUES.brand = uniqueSorted(RAW.map(r=>r.brand));
+  MS_VALUES.product = uniqueSorted(RAW.map(r=>r.product));
+
+  ['period','senior','sp','brand','product'].forEach(key=>{
+    MS_SELECTED[key] = new Set(); // reset to "All" on fresh data load
+    renderMsOptions(key);
+    updateMsTrigger(key);
+  });
+}
+
+function renderMsOptions(key){
+  const container = document.getElementById(key+'-options');
+  const values = visibleMsValues(key);
+  container.innerHTML = values.map((val,i)=>{
+    const id = 'ms-'+key+'-'+i;
+    const checked = MS_SELECTED[key].has(val) ? 'checked' : '';
+    return `<div class="ms-option"><input type="checkbox" id="${id}" data-key="${key}" data-value="${val.replace(/"/g,'&quot;')}" ${checked}><label for="${id}">${msDisplay(key,val)}</label></div>`;
+  }).join('') || '<div class="ms-option" style="color:var(--ink-soft);">No matches</div>';
+}
+
+function updateMsTrigger(key){
+  const sel = MS_SELECTED[key];
+  const trigger = document.getElementById(key+'-trigger');
+  if(sel.size===0){
+    trigger.textContent = key==='period'
+      ? `Year to date (${MONTH_LABEL[ELAPSED_MONTHS[0]]}–${MONTH_LABEL[ELAPSED_MONTHS[ELAPSED_MONTHS.length-1]]})`
+      : 'All ' + MS_LABELS[key];
+  } else if(sel.size===1){
+    trigger.textContent = msDisplay(key, [...sel][0]);
+  } else {
+    trigger.textContent = sel.size + ' selected';
+  }
+}
+
+function closeAllMsPanels(){
+  document.querySelectorAll('.ms-panel.open').forEach(p=>p.classList.remove('open'));
+  document.querySelectorAll('.ms-trigger.open').forEach(t=>t.classList.remove('open'));
+}
+
+['period','senior','sp','brand','product'].forEach(key=>{
+  document.getElementById(key+'-trigger').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const panel = document.getElementById(key+'-panel');
+    const isOpen = panel.classList.contains('open');
+    closeAllMsPanels();
+    if(!isOpen){ panel.classList.add('open'); document.getElementById(key+'-trigger').classList.add('open'); }
+  });
+
+  document.getElementById(key+'-panel').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const actionBtn = e.target.closest('button[data-action]');
+    if(actionBtn){
+      if(actionBtn.dataset.action==='all'){
+        const visible = visibleMsValues(key);
+        MS_SELECTED[key] = new Set([...MS_SELECTED[key], ...visible]);
+      }
+      if(actionBtn.dataset.action==='none'){ MS_SELECTED[key] = new Set(); }
+      renderMsOptions(key);
+      updateMsTrigger(key);
+      renderAll();
+      return;
+    }
+    const checkbox = e.target.closest('input[type="checkbox"]');
+    if(checkbox){
+      const val = checkbox.dataset.value;
+      if(checkbox.checked) MS_SELECTED[key].add(val); else MS_SELECTED[key].delete(val);
+      updateMsTrigger(key);
+      renderAll();
+    }
+  });
+});
+
+const productSearchEl = document.getElementById('product-search');
+if(productSearchEl){
+  productSearchEl.addEventListener('click', e=>e.stopPropagation());
+  productSearchEl.addEventListener('input', (e)=>{
+    MS_SEARCH.product = e.target.value;
+    renderMsOptions('product');
+  });
+}
+
+document.addEventListener('click', closeAllMsPanels);
+
+function getFilters(){
+  return {
+    periods: resolvedPeriods(),
+    senior: MS_SELECTED.senior,
+    sp: MS_SELECTED.sp,
+    brand: MS_SELECTED.brand,
+    product: MS_SELECTED.product
+  };
+}
+
+function filteredRows(f){
+  return RAW.filter(r =>
+    (f.senior.size===0 || f.senior.has(r.senior)) &&
+    (f.sp.size===0 || f.sp.has(r.sp)) &&
+    (f.brand.size===0 || f.brand.has(r.brand)) &&
+    (f.product.size===0 || f.product.has(r.product))
+  );
+}
+
+// returns {target, actual, visits, months:[{m,target,actual}]} for a row set given period filter
+function aggregate(rows, periods){
+  let target=0, actual=0, visits=0, forecast=0;
+  const monthly = periods.map(m => ({m, target:0, actual:0}));
+  rows.forEach(r=>{
+    periods.forEach((m,i)=>{
+      target += r.months[m].tarValue;
+      actual += r.months[m].sale;
+      forecast += r.months[m].fcValue;
+      visits += r.months[m].visits;
+      monthly[i].target += r.months[m].tarValue;
+      monthly[i].actual += r.months[m].sale;
+    });
+  });
+  return {target, actual, visits, forecast, monthly};
+}
+
+function annualForecastTotal(rows){ return rows.reduce((s,r)=>s+r.forecastValue,0); }
+function ytdActualTotal(rows){ return rows.reduce((s,r)=>s+r.actualValueYTD,0); }
+
+// Reusable semicircle gauge with a % value drawn in the center of the arc.
+function makeGauge(canvasId, actualVal, totalVal){
+  const pct = totalVal>0 ? (actualVal/totalVal*100) : 0;
+  const arcColor = tierColor(pct);
+  const gaugeActual = Math.min(actualVal, totalVal);
+  const gaugeRemain = Math.max(totalVal - actualVal, 0);
+  const chart = new Chart(document.getElementById(canvasId), {
+    type:'doughnut',
+    data:{
+      labels:['Actual','Remaining'],
+      datasets:[{ data:[gaugeActual, gaugeRemain], backgroundColor:[arcColor, '#EDEDED'], borderWidth:0 }]
+    },
+    options:{
+      rotation:-90, circumference:180, cutout:'72%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{ callbacks:{ label:(ctx)=> ctx.label+': '+fmtCompact(ctx.raw) } },
+        datalabels:{ display:false }
+      }
+    },
+    plugins:[{
+      id:'gaugeCenterText_'+canvasId,
+      beforeDraw(chart){
+        const {ctx, chartArea:{left,right,bottom}} = chart;
+        ctx.save();
+        const cx = (left+right)/2;
+        const cy = bottom - 6;
+        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+        ctx.font = "700 26px "+FONT_FAMILY;
+        ctx.fillStyle = arcColor;
+        ctx.fillText(fmtNum(pct,1)+'%', cx, cy);
+        ctx.restore();
+      }
+    }]
+  });
+  return {chart, pct};
+}
+
+/* ---------------- RENDER ORCHESTRATION ---------------- */
+function destroyCharts(){
+  Object.values(CHARTS).forEach(c => c && c.destroy());
+  CHARTS = {};
+}
+
+function renderAll(){
+  destroyCharts();
+  const f = getFilters();
+  const rows = filteredRows(f);
+  const activePage = document.querySelector('.tab.active').dataset.page;
+
+  buildPageShells();
+  renderOverview(rows, f);
+  renderTeam(rows, f);
+  renderProducts(rows, f);
+  renderCustomers(rows, f);
+
+  showPage(activePage);
+}
+
+function buildPageShells(){
+  document.getElementById('main').innerHTML = `
+    <section class="canvas-page" id="page-overview"></section>
+    <section class="canvas-page" id="page-team"></section>
+    <section class="canvas-page" id="page-products"></section>
+    <section class="canvas-page" id="page-customers"></section>
+  `;
+}
+
+function showPage(name){
+  document.querySelectorAll('.canvas-page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.page===name));
+}
+
+/* ---------------- OVERVIEW ---------------- */
+function renderOverview(rows, f){
+  const el = document.getElementById('page-overview');
+  const agg = aggregate(rows, f.periods);
+  const forecastFull = annualForecastTotal(rows);
+  const ytdActual = ytdActualTotal(rows);
+
+  el.innerHTML = `
+    <div class="grid cols-3" style="margin-bottom:18px;">
+      <div class="card">
+        <h3>Actual vs Full-Year Forecast</h3>
+        <canvas id="gaugeChart" height="180"></canvas>
+        <div class="kpi-sub" style="text-align:center; margin-top:-6px;">
+          <span class="num" style="font-size:15px;"><b>${fmtCompact(ytdActual)}</b></span> of
+          <span class="num"><b>${fmtCompact(forecastFull)}</b></span> forecast
+        </div>
+      </div>
+      <div class="card">
+        <h3>FC-VALUE vs Actual <span class="sub">— selected period</span></h3>
+        <canvas id="gaugeForecastChart" height="180"></canvas>
+        <div class="kpi-sub" style="text-align:center; margin-top:-6px;">
+          <span class="num" style="font-size:15px;"><b>${fmtCompact(agg.actual)}</b></span> of
+          <span class="num"><b>${fmtCompact(agg.forecast)}</b></span> forecast
+        </div>
+      </div>
+      <div class="card">
+        <h3>TAR-VALUE vs Actual <span class="sub">— selected period</span></h3>
+        <canvas id="gaugeTargetChart" height="180"></canvas>
+        <div class="kpi-sub" style="text-align:center; margin-top:-6px;">
+          <span class="num" style="font-size:15px;"><b>${fmtCompact(agg.actual)}</b></span> of
+          <span class="num"><b>${fmtCompact(agg.target)}</b></span> target · ${fmtNum(agg.visits)} visits logged
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:18px;">
+      <h3>Monthly Sales Trend <span class="sub">— actual value by month, ${agg.monthly.map(m=>MONTH_LABEL[m.m]).join(', ')}</span></h3>
+      <canvas id="trendChart" height="90"></canvas>
+    </div>
+    <div class="card">
+      <h3>Forecast Accuracy Tracker <span class="sub">— monthly FC-VALUE vs Actual, full history</span></h3>
+      <canvas id="forecastAccuracyChart" height="80"></canvas>
+      <p class="foot-note" id="forecastAccuracyNote"></p>
+    </div>
+  `;
+
+  CHARTS.gauge = makeGauge('gaugeChart', ytdActual, forecastFull).chart;
+  CHARTS.gaugeForecast = makeGauge('gaugeForecastChart', agg.actual, agg.forecast).chart;
+  CHARTS.gaugeTarget = makeGauge('gaugeTargetChart', agg.actual, agg.target).chart;
+
+  // Monthly trend (horizontal bar, target vs actual) + achievement % line
+  const trendCtx = document.getElementById('trendChart');
+  const monthlyPct = agg.monthly.map(m => m.target>0 ? (m.actual/m.target*100) : 0);
+  const pctMax = Math.max(...monthlyPct, 100) * 1.35;
+  CHARTS.trend = new Chart(trendCtx, {
+    type:'bar',
+    data:{
+      labels: agg.monthly.map(m=>MONTH_LABEL[m.m]),
+      datasets:[
+        {label:'Target', data: agg.monthly.map(m=>m.target), backgroundColor:COLORS.tealSoft, borderRadius:2, barPercentage:0.7, yAxisID:'y', order:2},
+        {label:'Actual', data: agg.monthly.map(m=>m.actual), backgroundColor:COLORS.amber, borderRadius:2, barPercentage:0.7, yAxisID:'y', order:2},
+        {
+          label:'Achievement %', type:'line', data: monthlyPct, yAxisID:'yPct', order:1,
+          borderColor:'#B0B0B0', backgroundColor:'#B0B0B0', borderWidth:2,
+          pointRadius:5, pointBackgroundColor:monthlyPct.map(tierColor), pointBorderColor:'#fff', pointBorderWidth:1.5,
+          tension:0.3,
+          datalabels:{
+            display:true, anchor:'end', align:'top', offset:6,
+            color:(ctx)=> tierColor(ctx.dataset.data[ctx.dataIndex]),
+            font:{family:FONT_FAMILY, size:10.5, weight:'700'},
+            formatter:(value)=> fmtNum(value,0)+'%'
+          }
+        }
+      ]
+    },
+    options:{
+      responsive:true,
+      layout:{ padding:{ top:30 } },
+      plugins:{
+        legend:{ position:'top', align:'end', labels:{ boxWidth:10, font:{family:FONT_FAMILY, size:12} } },
+        datalabels:{
+          display:(ctx)=> ctx.dataset.type !== 'line', anchor:'end', align:'top', offset:2,
+          color: COLORS.ink,
+          font:{ family:FONT_FAMILY, size:10.5, weight:'600' },
+          formatter:(value)=> fmtMillions(value)
+        }
+      },
+      scales:{
+        x:{ grid:{display:false}, ticks:{ font:{family:FONT_FAMILY, size:11} } },
+        y:{ position:'left', grid:{color:COLORS.hairline}, suggestedMax: Math.max(...agg.monthly.map(m=>Math.max(m.target,m.actual)))*1.22, ticks:{ callback:(v)=>fmtCompact(v), font:{family:FONT_FAMILY, size:11} } },
+        yPct:{ position:'right', min:0, max:pctMax, grid:{display:false}, ticks:{ callback:(v)=>v+'%', font:{family:FONT_FAMILY, size:11} } }
+      }
+    }
+  });
+
+  // Forecast Accuracy Tracker — always spans the full elapsed history, independent of Period filter.
+  const fcSeries = ELAPSED_MONTHS.map(m => rows.reduce((s,r)=>s+r.months[m].fcValue, 0));
+  const actSeries = ELAPSED_MONTHS.map(m => rows.reduce((s,r)=>s+r.months[m].sale, 0));
+  const biasSeries = fcSeries.map((fc,i) => fc>0 ? ((actSeries[i]-fc)/fc*100) : 0);
+  const avgBias = biasSeries.length ? biasSeries.reduce((a,b)=>a+b,0)/biasSeries.length : 0;
+
+  CHARTS.forecastAccuracy = new Chart(document.getElementById('forecastAccuracyChart'), {
+    type:'line',
+    data:{
+      labels: ELAPSED_MONTHS.map(m=>MONTH_LABEL[m]),
+      datasets:[
+        {
+          label:'Forecast (FC-VALUE)', data: fcSeries, borderColor:'#9AA5B1', backgroundColor:'#9AA5B1',
+          borderDash:[6,4], borderWidth:2, pointRadius:3, tension:0.25,
+          datalabels:{ display:true, anchor:'end', align:'top', offset:4, color:COLORS.inkSoft, font:{family:FONT_FAMILY, size:10, weight:'600'}, formatter:(v)=>fmtMillions(v) }
+        },
+        {
+          label:'Actual (SALE)', data: actSeries, borderColor:COLORS.teal, backgroundColor:COLORS.teal,
+          borderWidth:3, pointRadius:4, pointBackgroundColor:COLORS.teal, pointBorderColor:'#fff', pointBorderWidth:1.5, tension:0.25,
+          datalabels:{ display:true, anchor:'end', align:'bottom', offset:6, color:COLORS.teal, font:{family:FONT_FAMILY, size:10, weight:'700'}, formatter:(v)=>fmtMillions(v) }
+        }
+      ]
+    },
+    options:{
+      responsive:true,
+      layout:{ padding:{ top:26, bottom:10 } },
+      plugins:{ legend:{ position:'top', align:'end', labels:{ boxWidth:10, font:{family:FONT_FAMILY, size:12} } } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{ font:{family:FONT_FAMILY, size:11} } },
+        y:{ grid:{color:COLORS.hairline}, ticks:{ callback:(v)=>fmtCompact(v), font:{family:FONT_FAMILY, size:11} } }
+      }
+    }
+  });
+
+  const biasNote = document.getElementById('forecastAccuracyNote');
+  if(biasNote){
+    const dir = avgBias>=0 ? 'above' : 'below';
+    biasNote.innerHTML = `On average, actual sales have run <b class="num" style="color:${tierColor(avgBias>=0?100:60)};">${fmtNum(Math.abs(avgBias),1)}% ${dir}</b> the monthly FC-VALUE forecast across ${ELAPSED_MONTHS.length} recorded months.`;
+  }
+}
+
+/* ---------------- TEAM ---------------- */
+function groupSum(rows, keyFn, periods){
+  const map = new Map();
+  rows.forEach(r=>{
+    const key = keyFn(r) || '(unassigned)';
+    if(!map.has(key)) map.set(key, {target:0, actual:0, visits:0});
+    const g = map.get(key);
+    periods.forEach(m=>{ g.target += r.months[m].tarValue; g.actual += r.months[m].sale; g.visits += r.months[m].visits; });
+  });
+  return map;
+}
+
+function renderTeam(rows, f){
+  const el = document.getElementById('page-team');
+  const bySenior = groupSum(rows, r=>r.senior, f.periods);
+  const bySp = groupSum(rows, r=>r.sp, f.periods);
+
+  const seniorEntries = [...bySenior.entries()].sort((a,b)=>b[1].actual-a[1].actual);
+  const spEntries = [...bySp.entries()].sort((a,b)=>b[1].actual-a[1].actual);
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:18px;">
+      <h3>Target vs Actual — by Senior</h3>
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.tealSoft}"></span>Target</span>
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Actual</span>
+      </div>
+      <canvas id="seniorChart" height="80"></canvas>
+    </div>
+    <div class="card" style="margin-bottom:18px;">
+      <h3>Target vs Actual — by Sales Person</h3>
+      <canvas id="spChart" height="90"></canvas>
+    </div>
+    <div class="card">
+      <h3>Leaderboard</h3>
+      <table class="led">
+        <thead><tr>
+          <th>Sales Person</th><th class="num">Target</th><th class="num">Actual</th><th>Achievement</th>
+        </tr></thead>
+        <tbody>
+          ${spEntries.map(([name,g])=>{
+            const pct = g.target>0 ? (g.actual/g.target*100) : 0;
+            const barPct = Math.min(pct,100);
+            return `<tr>
+              <td class="name">${name}</td>
+              <td class="num">${fmtCompact(g.target)}</td>
+              <td class="num">${fmtCompact(g.actual)}</td>
+              <td>
+                <div class="bar-cell">
+                  <div class="bar-track"><div class="bar-fill" style="width:${barPct}%; background:${tierColor(pct)}"></div></div>
+                  <span class="num" style="min-width:48px; text-align:right; color:${tierColor(pct)}; font-weight:600;">${fmtNum(pct,0)}%</span>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      ${spEntries.length===0 ? '<p class="empty-note">No rows match the current filters.</p>':''}
+    </div>
+    <div class="card" style="margin-top:18px;">
+      <h3>Monthly Performance Heatmap <span class="sub">— achievement % by Sales Person, full history</span></h3>
+      <div id="heatmapWrap" style="overflow-x:auto;"></div>
+    </div>
+  `;
+
+  CHARTS.senior = new Chart(document.getElementById('seniorChart'), {
+    type:'bar',
+    data:{
+      labels: seniorEntries.map(([n])=>n),
+      datasets:[
+        {label:'Target', data:seniorEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:seniorEntries.map(([,g])=>g.actual), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
+      ]
+    },
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12,weight:'600'}, color:COLORS.ink}},
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...seniorEntries.map(([,g])=>Math.max(g.target,g.actual)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+
+  CHARTS.sp = new Chart(document.getElementById('spChart'), {
+    type:'bar',
+    data:{
+      labels: spEntries.map(([n])=>n),
+      datasets:[
+        {label:'Target', data:spEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:spEntries.map(([,g])=>g.actual), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
+      ]
+    },
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11,weight:'600'}, color:COLORS.ink, maxRotation:40, minRotation:40}},
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...spEntries.map(([,g])=>Math.max(g.target,g.actual)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+
+  // Monthly Performance Heatmap — sales person x elapsed month, achievement % tier-colored, full history (ignores Period filter)
+  const heatWrap = document.getElementById('heatmapWrap');
+  if(heatWrap){
+    const heatMap = new Map(); // sp -> {month -> {target, actual}}
+    rows.forEach(r=>{
+      const key = r.sp || '(unassigned)';
+      if(!heatMap.has(key)) heatMap.set(key, {});
+      const cellMap = heatMap.get(key);
+      ELAPSED_MONTHS.forEach(m=>{
+        if(!cellMap[m]) cellMap[m] = {target:0, actual:0};
+        cellMap[m].target += r.months[m].tarValue;
+        cellMap[m].actual += r.months[m].sale;
+      });
+    });
+    const heatOrder = spEntries.map(([name])=>name).filter(name=>heatMap.has(name));
+    let tableHtml = '<table class="led" style="min-width:560px;"><thead><tr><th>Sales Person</th>' +
+      ELAPSED_MONTHS.map(m=>`<th class="num">${MONTH_LABEL[m]}</th>`).join('') + '</tr></thead><tbody>';
+    heatOrder.forEach(name=>{
+      const cells = heatMap.get(name);
+      tableHtml += `<tr><td class="name">${name}</td>` + ELAPSED_MONTHS.map(m=>{
+        const c = cells[m] || {target:0, actual:0};
+        const pct = c.target>0 ? (c.actual/c.target*100) : 0;
+        const bg = tierColor(pct);
+        return `<td class="num" style="background:${bg}22; color:${bg}; font-weight:700;">${fmtNum(pct,0)}%</td>`;
+      }).join('') + '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+    heatWrap.innerHTML = heatOrder.length ? tableHtml : '<p class="empty-note">No rows match the current filters.</p>';
+  }
+}
+
+/* ---------------- PRODUCTS & BRANDS ---------------- */
+function renderProducts(rows, f){
+  const el = document.getElementById('page-products');
+
+  const byProduct = new Map();
+  const byBrand = new Map();
+  const byProductClass = new Map();
+  rows.forEach(r=>{
+    let sale=0, target=0;
+    f.periods.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; });
+
+    const pKey = r.product || '(unnamed product)';
+    if(!byProduct.has(pKey)) byProduct.set(pKey, {sale:0, target:0, brand:r.brand});
+    byProduct.get(pKey).sale += sale;
+    byProduct.get(pKey).target += target;
+
+    const bKey = r.brand || '(unbranded)';
+    if(!byBrand.has(bKey)) byBrand.set(bKey, {sale:0, target:0});
+    byBrand.get(bKey).sale += sale;
+    byBrand.get(bKey).target += target;
+
+    const pcKey = r.productClass || '(unclassified)';
+    if(!byProductClass.has(pcKey)) byProductClass.set(pcKey, {sale:0, target:0});
+    byProductClass.get(pcKey).sale += sale;
+    byProductClass.get(pcKey).target += target;
+  });
+
+  const topProducts = [...byProduct.entries()].sort((a,b)=>b[1].sale-a[1].sale).slice(0,20);
+  const brandEntries = [...byBrand.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+  const productClassEntries = [...byProductClass.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+
+  // Pareto: cumulative contribution across ALL products (not just top 20), to find the true 80% cutoff.
+  const allProductsSorted = [...byProduct.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+  const totalAllSale = allProductsSorted.reduce((s,[,g])=>s+g.sale, 0);
+  let running = 0, paretoCount = 0;
+  for(const [,g] of allProductsSorted){
+    running += g.sale;
+    paretoCount++;
+    if(totalAllSale>0 && running/totalAllSale*100 >= 80) break;
+  }
+  let cum = 0;
+  const paretoData = topProducts.map(([name,g])=>{
+    cum += g.sale;
+    return { name, sale:g.sale, cumPct: totalAllSale>0 ? (cum/totalAllSale*100) : 0 };
+  });
+
+  el.innerHTML = `
+    <div class="grid cols-2" style="margin-bottom:18px; align-items:start;">
+      <div class="card">
+        <h3>Top 20 Products by Sales <span class="sub">— selected period</span></h3>
+        <canvas id="prodChart" height="${Math.max(220, topProducts.length*22)}"></canvas>
+      </div>
+      <div class="card">
+        <h3>Target vs Actual — by Brand</h3>
+        <div class="legend-row">
+          <span class="legend-item"><span class="legend-dot" style="background:${COLORS.tealSoft}"></span>Target</span>
+          <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Actual</span>
+        </div>
+        <canvas id="brandChart" height="220"></canvas>
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-bottom:18px; align-items:start;">
+      <div class="card">
+        <h3>Target vs Actual — by Product Class</h3>
+        <canvas id="productClassChart" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h3>Product Pareto <span class="sub">— cumulative contribution, top 20</span></h3>
+        <canvas id="paretoChart" height="220"></canvas>
+        <p class="foot-note">${fmtNum(paretoCount)} of ${fmtNum(allProductsSorted.length)} products (${fmtNum(allProductsSorted.length?paretoCount/allProductsSorted.length*100:0,0)}%) account for 80% of total sales value.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3>All Products</h3>
+      <div class="search-wrap">
+        <input type="text" id="productSearch" placeholder="Search product name…" style="width:100%; max-width:340px; padding:8px 10px; border:1px solid var(--hairline-strong); border-radius:6px; font-family:inherit; font-size:13px;">
+      </div>
+      <table class="led">
+        <thead><tr><th>Product</th><th>Brand</th><th class="num">Target</th><th class="num">Actual</th></tr></thead>
+        <tbody id="productTableBody"></tbody>
+      </table>
+    </div>
+  `;
+
+  CHARTS.prod = new Chart(document.getElementById('prodChart'), {
+    type:'bar',
+    data:{
+      labels: topProducts.map(([n])=>n.length>28?n.slice(0,26)+'…':n),
+      datasets:[{ label:'Sales', data: topProducts.map(([,g])=>g.sale), backgroundColor: topProducts.map((_,i)=>paletteColor(i)), borderRadius:2, datalabels:endValueLabelCfg() }]
+    },
+    options:{
+      indexAxis:'y',
+      layout:{padding:{right:58}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{title:(items)=>topProducts[items[0].dataIndex][0]}}},
+      scales:{
+        x:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...topProducts.map(([,g])=>g.sale),0)*1.18, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5}}}
+      }
+    }
+  });
+
+  CHARTS.brand = new Chart(document.getElementById('brandChart'), {
+    type:'bar',
+    data:{
+      labels: brandEntries.map(([n])=>n),
+      datasets:[
+        {label:'Target', data:brandEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:brandEntries.map(([,g])=>g.sale), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
+      ]
+    },
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...brandEntries.map(([,g])=>Math.max(g.target,g.sale)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+
+  CHARTS.productClass = new Chart(document.getElementById('productClassChart'), {
+    type:'bar',
+    data:{
+      labels: productClassEntries.map(([n])=>n),
+      datasets:[
+        {label:'Target', data:productClassEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:productClassEntries.map(([,g])=>g.sale), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
+      ]
+    },
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...productClassEntries.map(([,g])=>Math.max(g.target,g.sale)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+
+  CHARTS.pareto = new Chart(document.getElementById('paretoChart'), {
+    type:'bar',
+    data:{
+      labels: paretoData.map(d=>d.name.length>16?d.name.slice(0,14)+'…':d.name),
+      datasets:[
+        {
+          type:'bar', label:'Sales', data: paretoData.map(d=>d.sale), backgroundColor:COLORS.teal, borderRadius:2, yAxisID:'y', order:2
+        },
+        {
+          type:'line', label:'Cumulative %', data: paretoData.map(d=>d.cumPct), yAxisID:'yPct', order:1,
+          borderColor:'#744EC2', backgroundColor:'#744EC2', borderWidth:2, pointRadius:3, tension:0.2,
+          datalabels:{
+            display:(ctx)=> ctx.dataIndex%3===0 || ctx.dataIndex===ctx.dataset.data.length-1,
+            anchor:'end', align:'top', offset:4, color:'#744EC2', font:{family:FONT_FAMILY, size:10, weight:'700'},
+            formatter:(v)=> fmtNum(v,0)+'%'
+          }
+        }
+      ]
+    },
+    options:{
+      plugins:{ legend:{ position:'top', align:'end', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } },
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:10}, maxRotation:50, minRotation:50}},
+        y:{position:'left', grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        yPct:{position:'right', min:0, max:110, grid:{display:false}, ticks:{callback:v=>v+'%', font:{family:FONT_FAMILY,size:11}}}
+      }
+    }
+  });
+
+  const allProducts = [...byProduct.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+  function renderProductTable(filterText){
+    const q = (filterText||'').toLowerCase();
+    const body = document.getElementById('productTableBody');
+    const rowsHtml = allProducts
+      .filter(([name]) => name.toLowerCase().includes(q))
+      .slice(0,300)
+      .map(([name,g])=>`<tr><td class="name">${name}</td><td class="num">${g.brand||'—'}</td><td class="num">${fmtCompact(g.target)}</td><td class="num">${fmtCompact(g.sale)}</td></tr>`)
+      .join('');
+    body.innerHTML = rowsHtml || '<tr><td colspan="4"><p class="empty-note">No products match.</p></td></tr>';
+  }
+  renderProductTable('');
+  document.getElementById('productSearch').addEventListener('input', (e)=>renderProductTable(e.target.value));
+}
+
+/* ---------------- CUSTOMERS ---------------- */
+function renderCustomers(rows, f){
+  const el = document.getElementById('page-customers');
+
+  const byCustomer = new Map();
+  const byCustomerClass = new Map();
+  rows.forEach(r=>{
+    let sale=0, target=0;
+    f.periods.forEach(m=>{ sale+=r.months[m].sale; target+=r.months[m].tarValue; });
+    const key = r.customer || '(unnamed customer)';
+    if(!byCustomer.has(key)) byCustomer.set(key, {sale:0, target:0, custClass:r.custClass});
+    byCustomer.get(key).sale += sale;
+    byCustomer.get(key).target += target;
+
+    const ccKey = r.custClass || '(unclassified)';
+    if(!byCustomerClass.has(ccKey)) byCustomerClass.set(ccKey, {sale:0, target:0});
+    byCustomerClass.get(ccKey).sale += sale;
+    byCustomerClass.get(ccKey).target += target;
+  });
+
+  const topCustomers = [...byCustomer.entries()].sort((a,b)=>b[1].sale-a[1].sale).slice(0,15);
+  const totalSale = [...byCustomer.values()].reduce((s,g)=>s+g.sale,0);
+  const customerClassEntries = [...byCustomerClass.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+
+  el.innerHTML = `
+    <div class="grid cols-2" style="margin-bottom:18px; align-items:start;">
+      <div class="card">
+        <h3>Top 15 Customers by Sales</h3>
+        <canvas id="custChart" height="260"></canvas>
+      </div>
+      <div class="card">
+        <h3>Concentration <span class="sub">— top 15 vs remainder</span></h3>
+        <canvas id="custPie" height="180"></canvas>
+        <p class="foot-note">Top 15 customers represent <b class="num">${fmtNum(totalSale>0 ? (topCustomers.reduce((s,[,g])=>s+g.sale,0)/totalSale*100):0,1)}%</b> of filtered sales value across ${byCustomer.size.toLocaleString()} customers.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:18px;">
+      <h3>Target vs Actual — by Customer Class</h3>
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.tealSoft}"></span>Target</span>
+        <span class="legend-item"><span class="legend-dot" style="background:${COLORS.amber}"></span>Actual</span>
+      </div>
+      <canvas id="customerClassChart" height="180"></canvas>
+    </div>
+    <div class="card">
+      <h3>All Customers</h3>
+      <div class="search-wrap">
+        <input type="text" id="custSearch" placeholder="Search customer name…" style="width:100%; max-width:340px; padding:8px 10px; border:1px solid var(--hairline-strong); border-radius:6px; font-family:inherit; font-size:13px;">
+      </div>
+      <table class="led">
+        <thead><tr><th>Customer</th><th>Class</th><th class="num">Target</th><th class="num">Actual</th></tr></thead>
+        <tbody id="custTableBody"></tbody>
+      </table>
+    </div>
+  `;
+
+  CHARTS.cust = new Chart(document.getElementById('custChart'), {
+    type:'bar',
+    data:{
+      labels: topCustomers.map(([n])=>n.length>26?n.slice(0,24)+'…':n),
+      datasets:[{ label:'Sales', data: topCustomers.map(([,g])=>g.sale), backgroundColor: topCustomers.map((_,i)=>paletteColor(i)), borderRadius:2, datalabels:endValueLabelCfg() }]
+    },
+    options:{
+      indexAxis:'y',
+      layout:{padding:{right:58}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{title:(items)=>topCustomers[items[0].dataIndex][0]}}},
+      scales:{
+        x:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...topCustomers.map(([,g])=>g.sale),0)*1.18, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
+        y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5}}}
+      }
+    }
+  });
+
+  const remainder = Math.max(totalSale - topCustomers.reduce((s,[,g])=>s+g.sale,0), 0);
+  CHARTS.custPie = new Chart(document.getElementById('custPie'), {
+    type:'doughnut',
+    data:{
+      labels:['Top 15 customers','All other customers'],
+      datasets:[{ data:[topCustomers.reduce((s,[,g])=>s+g.sale,0), remainder], backgroundColor:['#118DFF', '#D9B300'], borderWidth:0,
+        datalabels:{
+          display:true, color:'#fff', font:{family:FONT_FAMILY, size:12, weight:'700'},
+          formatter:(value, ctx)=>{
+            const total = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            const pct = total>0 ? (value/total*100) : 0;
+            return pct>=6 ? fmtNum(pct,0)+'%' : '';
+          }
+        }
+      }]
+    },
+    options:{ plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{family:FONT_FAMILY,size:12}} } } }
+  });
+
+  CHARTS.customerClass = new Chart(document.getElementById('customerClassChart'), {
+    type:'bar',
+    data:{
+      labels: customerClassEntries.map(([n])=>n),
+      datasets:[
+        {label:'Target', data:customerClassEntries.map(([,g])=>g.target), backgroundColor:COLORS.tealSoft, borderRadius:2, datalabels:targetLabelCfg()},
+        {label:'Actual', data:customerClassEntries.map(([,g])=>g.sale), backgroundColor:COLORS.amber, borderRadius:2, datalabels:actualLabelCfg()}
+      ]
+    },
+    options:{ layout:{padding:{top:34}}, plugins:{legend:{display:false}}, scales:{
+      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:12}}},
+      y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...customerClassEntries.map(([,g])=>Math.max(g.target,g.sale)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+    }}
+  });
+
+  const allCustomers = [...byCustomer.entries()].sort((a,b)=>b[1].sale-a[1].sale);
+  function renderCustTable(filterText){
+    const q=(filterText||'').toLowerCase();
+    const body = document.getElementById('custTableBody');
+    const rowsHtml = allCustomers
+      .filter(([name])=>name.toLowerCase().includes(q))
+      .slice(0,300)
+      .map(([name,g])=>`<tr><td class="name">${name}</td><td class="num">${g.custClass||'—'}</td><td class="num">${fmtCompact(g.target)}</td><td class="num">${fmtCompact(g.sale)}</td></tr>`)
+      .join('');
+    body.innerHTML = rowsHtml || '<tr><td colspan="4"><p class="empty-note">No customers match.</p></td></tr>';
+  }
+  renderCustTable('');
+  document.getElementById('custSearch').addEventListener('input', (e)=>renderCustTable(e.target.value));
+}
+
+/* ---------------- EVENTS ---------------- */
+document.getElementById('tabs').addEventListener('click', (e)=>{
+  const tab = e.target.closest('.tab');
+  if(!tab) return;
+  showPage(tab.dataset.page);
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  ['period','senior','sp','brand','product'].forEach(key=>{
+    MS_SELECTED[key] = new Set();
+    renderMsOptions(key);
+    updateMsTrigger(key);
+  });
+  MS_SEARCH.product = '';
+  if(productSearchEl) productSearchEl.value = '';
+  renderAll();
+});
+
+document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+
+(function(){
+  const ACCESS_CODE = "DHSales2026";
+  const STORAGE_KEY = "unlock_sales";
+  const gate = document.getElementById('accessGate');
+  const content = document.getElementById('dashboardContent');
+  const input = document.getElementById('gateInput');
+  const submitBtn = document.getElementById('gateSubmit');
+  const errorMsg = document.getElementById('gateError');
+
+  function unlock(){
+    gate.style.display = 'none';
+    content.style.display = 'block';
+    sessionStorage.setItem(STORAGE_KEY, '1');
+    loadData();
+  }
+
+  function tryCode(){
+    if(input.value === ACCESS_CODE){
+      unlock();
+    } else {
+      errorMsg.style.display = 'block';
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  submitBtn.addEventListener('click', tryCode);
+  input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') tryCode(); });
+
+  if(sessionStorage.getItem(STORAGE_KEY) === '1'){
+    unlock();
+  } else {
+    input.focus();
+  }
+})();
+
+</script>
+</div>
+</body>
+</html>
