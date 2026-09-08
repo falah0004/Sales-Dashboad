@@ -835,10 +835,6 @@ function renderTeam(rows, f){
       ${spEntries.length===0 ? '<p class="empty-note">No rows match the current filters.</p>':''}
     </div>
     <div class="card" style="margin-top:18px;">
-      <h3>Sales per Visit <span class="sub">— efficiency by Sales Person, selected period</span></h3>
-      <canvas id="spvChart" height="${Math.max(160, spEntries.length*26)}"></canvas>
-    </div>
-    <div class="card" style="margin-top:18px;">
       <h3>Monthly Performance Heatmap <span class="sub">— achievement % by Sales Person, full history</span></h3>
       <div id="heatmapWrap" style="overflow-x:auto;"></div>
     </div>
@@ -872,26 +868,6 @@ function renderTeam(rows, f){
       x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11,weight:'600'}, color:COLORS.ink, maxRotation:40, minRotation:40}},
       y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...spEntries.map(([,g])=>Math.max(g.target,g.actual)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
     }}
-  });
-
-  // Sales per Visit — efficiency (selected period, uses the same bySp totals as the leaderboard)
-  const spvEntries = [...spEntries].map(([name,g])=>[name, g.visits>0 ? g.actual/g.visits : 0])
-    .sort((a,b)=>b[1]-a[1]);
-  CHARTS.spv = new Chart(document.getElementById('spvChart'), {
-    type:'bar',
-    data:{
-      labels: spvEntries.map(([n])=>n),
-      datasets:[{ label:'Sales per Visit', data: spvEntries.map(([,v])=>v), backgroundColor: spvEntries.map((_,i)=>paletteColor(i)), borderRadius:2, datalabels:endValueLabelCfg() }]
-    },
-    options:{
-      indexAxis:'y',
-      layout:{padding:{right:58}},
-      plugins:{ legend:{display:false} },
-      scales:{
-        x:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...spvEntries.map(([,v])=>v),0)*1.18, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}},
-        y:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11.5,weight:'600'}, color:COLORS.ink}}
-      }
-    }
   });
 
   // Monthly Performance Heatmap — sales person x elapsed month, achievement % tier-colored, full history (ignores Period filter)
