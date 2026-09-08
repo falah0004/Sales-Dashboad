@@ -284,15 +284,40 @@ function renderAll(){
     data:{
       labels: sorted.map(r=>r.promoter),
       datasets:[
-        {label:'Target', data:sorted.map(r=>r.target), backgroundColor:COLORS.tealSoft, borderRadius:2},
-        {label:'Achieved', data:sorted.map(r=>r.achieved), backgroundColor:COLORS.amber, borderRadius:2},
-        {label:'Expected pace', data:sorted.map(r=>r.expected), backgroundColor:'#9AA5B1', borderRadius:2}
+        {
+          label:'Target', data:sorted.map(r=>r.target), backgroundColor:COLORS.tealSoft, borderRadius:2,
+          datalabels:{
+            display:true, anchor:'end', align:'top', offset:2,
+            color:COLORS.ink, font:{family:FONT_FAMILY, size:10, weight:'600'},
+            formatter:(value)=> fmtCompact(value)
+          }
+        },
+        {
+          label:'Achieved', data:sorted.map(r=>r.achieved), backgroundColor:COLORS.amber, borderRadius:2,
+          datalabels:{
+            display:true, anchor:'end', align:'top', offset:2,
+            color:COLORS.ink, font:{family:FONT_FAMILY, size:10, weight:'700'},
+            formatter:(value,ctx)=> [fmtCompact(value), '('+fmtNum(sorted[ctx.dataIndex].achievedPct,0)+'%)']
+          }
+        },
+        {
+          label:'Expected pace', data:sorted.map(r=>r.expected), backgroundColor:'#9AA5B1', borderRadius:2,
+          datalabels:{
+            display:true, anchor:'end', align:'top', offset:2,
+            color:COLORS.inkSoft, font:{family:FONT_FAMILY, size:10, weight:'700'},
+            formatter:(value,ctx)=> [fmtCompact(value), '('+fmtNum(sorted[ctx.dataIndex].expectedPct,0)+'%)']
+          }
+        }
       ]
     },
-    options:{ plugins:{legend:{display:false}}, scales:{
-      x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11,weight:'600'}, color:COLORS.ink, maxRotation:30, minRotation:30}},
-      y:{grid:{color:COLORS.hairline}, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
-    }}
+    options:{
+      layout:{ padding:{ top:36 } },
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{family:FONT_FAMILY,size:11,weight:'600'}, color:COLORS.ink, maxRotation:30, minRotation:30}},
+        y:{grid:{color:COLORS.hairline}, suggestedMax: Math.max(...sorted.map(r=>Math.max(r.target,r.achieved,r.expected)),0)*1.3, ticks:{callback:v=>fmtCompact(v), font:{family:FONT_FAMILY,size:11}}}
+      }
+    }
   });
 }
 
